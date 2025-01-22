@@ -259,7 +259,7 @@ public:
 	double error;
 	int time_step = Time_step;
 	double time_all = pyhsic_time;
-	double dt = 1e-8;
+	double dt = 1e-7;
 	double dt2 = 1e-8; // 与dt初值相同，用于输出结果文件
 	double Q_outlet_macro{0};
 	double Q_outlet_free_micro{0};
