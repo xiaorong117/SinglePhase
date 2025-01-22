@@ -11,3 +11,5 @@
 !*.cu
 !*.md
 !*.gitignore
+!.vscode/
+!*.json
