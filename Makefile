@@ -4,7 +4,7 @@ build: configure
 
 .PHONY: configure
 configure:
-	cmake -B build  -DMUMPS_ROOT=/home/rong/桌面/mumps-main/build/local
+	cmake -B build
 
 .PHONY: run
 run:

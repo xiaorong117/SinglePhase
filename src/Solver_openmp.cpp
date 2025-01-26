@@ -9,6 +9,7 @@
 #include <omp.h>
 #include <ctime>
 #include <chrono>
+
 #include <sys/types.h>
 #include <dirent.h>
 #include <filesystem>
@@ -32,7 +33,11 @@
 // Utilities and system includes
 #include <helper_cuda.h>	  // helper function CUDA error checking and initialization
 #include <helper_functions.h> // helper for shared functions common to CUDA Samples
+// extern "C" {
+//   #include "mkl.h"
+//   }
 
+#define OMP_PARA 20
 using namespace std;
 using namespace std::chrono;
 
@@ -42,37 +47,62 @@ double iters_globa{0};
 ////常量设置
 double pi = 3.1415927;
 double gas_vis = 2e-5;				 // 粘度
-double porosity = 0.1;				 // 孔隙率
+double porosity = 0.05;				 // 孔隙率   含水改成0.05，不含水0.1
 double ko = 12.3e-21;				 // 微孔达西渗透率 m^2
 double inlet_pre = 100;				 // 进口压力 Pa
 double outlet_pre = inlet_pre - 100; // 出口压力 Pa
 double D = 9e-9;					 // 扩散系数
 double Effect_D = 0.05 * D;			 // 微孔中的有效扩散系数
-double voxel_size = 4e-9;			 // 像素尺寸，单位m    5.345e-6 8e-9
-double domain_size_cubic = 350;
-double T_critical{190.564};		// 甲烷的临界温度 190.564K
-double P_critical{4.599 * 1e6}; // 甲烷的临界压力 4.599MPa
-double Temperature{400};		// 温度
-double Rho_ad{400};				// kg/m3
-double n_max_ad{44.8};			// kg/m3
-double K_langmuir{4e-8};		// Pa^(-1)
-double Ds{2.46e-8};				// m2/s
+double voxel_size = 320e-9;			 // 像素尺寸，单位m    5.345e-6 8e-9 320e-9
+double domain_size_cubic = 384;		 // 384
+double T_critical{190.564};			 // 甲烷的临界温度 190.564K
+double P_critical{4.599 * 1e6};		 // 甲烷的临界压力 4.599MPa
+double Temperature{400};			 // 温度
+double Rho_ad{400};					 // kg/m3
+double n_max_ad{44.8};				 // kg/m3
+double K_langmuir{4e-8};			 // Pa^(-1)
+double Ds{2.46e-8};					 // m2/s
 double micro_radius{3.48e-9};
-double porosity_HP{0.243};
-double porosity_LP{0.081};
-double K_OM_HP{1095e-21};
-double K_OM_LP{15e-21};
+double porosity_HP1{0.243};
+double porosity_HP2{0.243};
+double porosity_LP1{0.081};
+double porosity_LP2{0.081};	  // 含水
+double porosity_clay1{0.081}; // 含水改成0   大孔粘土
+double porosity_clay2{0.081}; // 含水改成0
+double micro_porosity_HP{porosity};
+double micro_porosity_LP{porosity};
+double micro_porosity_Clay{porosity}; // 含水改成0,不含水改成porosity
+
+double swww_clay{0}; // 含水改成1，不含水0
+double swww_om{0};	 // 含水改成 0.5，不含水0
+double Sw_OMLP{swww_om};
+double Sw_max_OMLP{1};
+double a_OMLP = 2e-21 / pow(Sw_max_OMLP, 2);
+double K_OM_LP{a_OMLP * pow(Sw_OMLP - Sw_max_OMLP, 2)};
+
+double Sw_om{Sw_OMLP};
+double Sw_max_om{1};
+double a_om = (700e-21) / pow(Sw_max_om, 2);
+double K_OM_HP{a_om * pow(Sw_om - Sw_max_om, 2)};
+
+double Sw_clay{swww_clay};
+double Sw_max_clay{1};
+double a_clay = 2e-22 / pow(Sw_max_clay, 6);
+double K_Clay{a_clay * pow(Sw_clay - Sw_max_clay, 6)};
+
+double refer_pressure{1e6};
+double L_CLAY{20e-9};
+double L_OM_1{1000e-9};
+double L_OM_2{20e-9};
 
 vector<double> Ds_LIST({8.32e-9, 9.52e-9, 1.14e-8, 1.44e-8, 1.77e-8, 2.10e-8, 2.46e-8});
-// int Time_step{464};
-// int percentage_production_counter{95};
-// double pyhsic_time{0.050314};
-// double machine_time{76698};
 int Time_step{0};
 int percentage_production_counter{1};
 double pyhsic_time{0};
 double machine_time{0};
 int Flag_eigen{true};
+int Flag_intri_per{true};
+int Flag_Hybrid{true};
 int flag = 2;
 int flag1 = 2;
 std::string folderPath;
@@ -192,12 +222,10 @@ public:
 	// 求解的时间变量 CSR format
 	int *ia, *ja;
 	// COO format
+
 	int *irn, *jcn;
 	double *a;
 	// 申请孔喉的动态存储空间
-
-	// 申请孔喉的动态存储空间
-
 	pore *Pb;
 	throat *Tb_in;
 	throatmerge *Tb;
@@ -205,7 +233,7 @@ public:
 	double error;
 	int time_step = Time_step;
 	double time_all = pyhsic_time;
-	double dt = 1e-8;
+	double dt = 1e-7;
 	double dt2 = 1e-8; // 与dt初值相同，用于输出结果文件
 	double Q_outlet_macro{0};
 	double Q_outlet_free_micro{0};
@@ -243,48 +271,47 @@ public:
 	// double total_p=2.75554e-8;
 
 	void memory(); // 动态分配存储器
+
 	void initial_condition();
 	void initial_condition(int i); // 断电继续算
-	void Paramentinput();		   // 孔喉数据导入函数声明
-	void Paramentinput(int i);	   // 微孔非均匀文件读取
-	void Para_cal_REV();		   //
+
+	void Paramentinput();	   // 孔喉数据导入函数声明
+	void Paramentinput(int i); // 微孔非均匀文件读取
+	void Para_cal_REV();	   //
 	void Para_cal_REV_newton();
 	void para_cal();				 // 喉道长度等相关参数计算
 	void para_cal_in_newton();		 // 在牛顿迭代中计算 克努森数
 	void para_cal(double);			 // 喉道长度等相关参数计算
 	void para_cal_in_newton(double); // 在牛顿迭代中计算 克努森数
-	double compre(double pressure);	 // 压缩系数
+
+	double compre(double pressure); // 压缩系数
 	double visco(double pressure, double z, double T);
 	double micro_permeability(double pre);
 	void Function_DS(double pressure);
 	double Function_Slip(double knusen);
 	double Function_Slip_clay(double knusen);
 
-	void Eigen_subroutine(Eigen::SparseMatrix<double, Eigen::RowMajor> &, Eigen::VectorXd &); // 非线性求解器
-	void PressureMatrix();																	  // 压力矩阵
-	double Nor_inf(double A[]);																  // 误差
-	void Eigen_solver();																	  // 瞬态扩散迭代求解流程
+	void Eigen_solver(); // 瞬态扩散迭代求解流程
 	void Eigen_solver_per();
 	void Eigen_solver_per(double);
-	void Eigen_subroutine_per(Eigen::SparseMatrix<double, Eigen::RowMajor> &, Eigen::VectorXd &);
-
-	void AMGXsolver_subroutine(AMGX_matrix_handle &A_amgx, AMGX_vector_handle &b_amgx, AMGX_vector_handle &solution_amgx, AMGX_solver_handle &solver, int n_amgx, int nnz_amgx);
-	void AMGXsolver_subroutine_per(AMGX_matrix_handle &A_amgx, AMGX_vector_handle &b_amgx, AMGX_vector_handle &solution_amgx, AMGX_solver_handle &solver, int n_amgx, int nnz_amgx);
 	void AMGXsolver(); // 产气
-	void AMGXsplver_REV();
-	void PressureMatrix_REV();
-	void Matrix_permeability();
 	void AMGX_permeability_solver();
-	void Matrix_permeability(double);
 	void AMGX_permeability_solver(double);
-	void Mysolver_for_inpermeability();
-	void Mysolver_for_Appermeability();
-	int conjugateGradient_solver(int iters_, double tol_);
+	void AMGX_solver_REV();
+	void AMGX_solver_apparent_permeability_REV();
 
-	void Matrix();
-	void Intrinsic_permeability(int myid);
-
+	void Matrix_gas_pro_REV();
+	void Matrix_per_REV();
+	void Matrix_permeability();
+	void Matrix_permeability(double);
+	void Matrix_gas_pro(); // 压力矩阵
 	void CSR2COO();
+	double Nor_inf(double A[]); // 误差
+
+	void Eigen_subroutine_per(Eigen::SparseMatrix<double, Eigen::RowMajor> &, Eigen::VectorXd &);
+	void Eigen_subroutine(Eigen::SparseMatrix<double, Eigen::RowMajor> &, Eigen::VectorXd &); // 非线性求解器
+	void AMGX_solver_subroutine(AMGX_matrix_handle &A_amgx, AMGX_vector_handle &b_amgx, AMGX_vector_handle &solution_amgx, AMGX_solver_handle &solver, int n_amgx, int nnz_amgx);
+	void AMGX_solver_subroutine_per(AMGX_matrix_handle &A_amgx, AMGX_vector_handle &b_amgx, AMGX_vector_handle &solution_amgx, AMGX_solver_handle &solver, int n_amgx, int nnz_amgx);
 
 	double macro_outlet_flow();		 // 出口大孔流量
 	double micro_outlet_free_flow(); // 出口微孔流量
@@ -292,6 +319,7 @@ public:
 	double macro_outlet_Q();		 // 出口大孔流量
 	double micro_outlet_advec_Q();	 // 出口微孔流量
 	double micro_outlet_diff_Q();	 // 出口吸附量
+	double REV_OUT();
 
 	double macro_mass_loss();
 	double micro_free_mass_loss();
@@ -303,8 +331,6 @@ public:
 	double OM_HP_free_loss_per_step();
 	double OM_LP_ad_loss_per_step();
 	double OM_LP_free_loss_per_step();
-
-	double REV_OUT();
 
 	void output(int n);			 // 输出VTK文件
 	void output(int n, bool m);	 // REV 输出VTK 瞬态
@@ -320,260 +346,6 @@ public:
 	}
 };
 
-void PNMsolver::Mysolver_for_Appermeability()
-{
-	auto start1 = high_resolution_clock::now();
-	double macro{0}, micro_advec{0}, micro_diff{0};
-
-	int n = 1;												// label of output file
-	int inter_n{0};											// The interation of outer loop of Newton-raphoon method
-	double total_flow = 0;									// accumulation production
-	ofstream outfile("Apparent_Permeability_mysolver.txt"); // output permeability;
-	Flag_eigen = false;
-	Function_DS(inlet_pre);
-	memory();
-	Paramentinput();
-	initial_condition();
-	para_cal();
-	Matrix_permeability();
-
-	int iter = 200000;
-	double re = 1e-3;
-	conjugateGradient_solver(iter, re);
-	for (size_t i = 2; i < 52; i++)
-	{
-		para_cal_in_newton();
-		Matrix_permeability();
-		conjugateGradient_solver(iter, re);
-		inter_n = 0;
-		do
-		{
-			para_cal_in_newton();
-			Matrix_permeability();
-			conjugateGradient_solver(iter, re);
-			inter_n++;
-			cout << "Inf_norm = " << norm_inf << "\t\t"
-				 << "inner loop = " << inter_n
-				 << "\t\t" << endl;
-		} while (norm_inf > eps_per);
-
-		macro = macro_outlet_Q();
-		micro_advec = micro_outlet_advec_Q();
-		micro_diff = micro_outlet_diff_Q();
-
-		auto stop2 = high_resolution_clock::now();
-		auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-
-		outfile << (macro + micro_advec + micro_diff) * visco(inlet_pre, compre(inlet_pre), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << "\t"
-				<< inlet_pre / 1e6 << "\t"
-				<< duration2.count() / 1000 << "s" << "\t"
-				<< endl;
-		inlet_pre = i * 1e6;
-		outlet_pre = inlet_pre - 100;
-		Function_DS(inlet_pre);
-		initial_condition();
-	}
-	output(1, 1);
-	outfile.close();
-}
-
-int PNMsolver::conjugateGradient_solver(int iters_, double tol_)
-{
-	// 矩阵的显存空间CSR
-	int *d_csr_offsets, *d_csr_columns;
-	double *d_csr_values;
-
-	clock_t startTime, endTime;
-	startTime = clock();
-
-	int N = op + mp;
-	int nnz = ia[op + mp];
-	const double tol = tol_;
-	const int max_iter = iters_;
-	cout << "max_iter:" << max_iter << endl;
-	double aa, b, na, r0, r1, rr;
-
-	double *x;
-	double *d_x, dot;
-	double *d_r, *d_p, *d_Ax;
-	int k;
-	double alpha, beta, alpham1;
-
-	x = (double *)malloc(N * sizeof(double));
-	for (int i = 0; i < N; i++)
-	{
-		x[i] = 0.0;
-	}
-
-	/* Get handle to the CUBLAS context */
-	cublasHandle_t cublasHandle = 0;
-	cublasStatus_t cublasStatus;
-	cublasStatus = cublasCreate(&cublasHandle);
-	checkCudaErrors(cublasStatus);
-
-	/* Get handle to the CUSPARSE context */
-	cusparseHandle_t cusparseHandle = 0;
-	checkCudaErrors(cusparseCreate(&cusparseHandle));
-
-	checkCudaErrors(cudaMalloc((void **)&d_csr_columns, nnz * sizeof(int)));
-	checkCudaErrors(cudaMalloc((void **)&d_csr_offsets, (N + 1) * sizeof(int)));
-	checkCudaErrors(cudaMalloc((void **)&d_csr_values, nnz * sizeof(double)));
-	checkCudaErrors(cudaMalloc((void **)&d_x, N * sizeof(double)));
-	checkCudaErrors(cudaMalloc((void **)&d_r, N * sizeof(double)));
-	checkCudaErrors(cudaMalloc((void **)&d_p, N * sizeof(double)));
-	checkCudaErrors(cudaMalloc((void **)&d_Ax, N * sizeof(double)));
-
-	/* Wrap raw data into cuSPARSE generic API objects */
-	cusparseSpMatDescr_t matA = NULL;
-	checkCudaErrors(cusparseCreateCsr(&matA, N, N, nnz, d_csr_offsets, d_csr_columns, d_csr_values,
-									  CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
-									  CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F));
-	cusparseDnVecDescr_t vecx = NULL;
-	checkCudaErrors(cusparseCreateDnVec(&vecx, N, d_x, CUDA_R_64F));
-	cusparseDnVecDescr_t vecp = NULL;
-	checkCudaErrors(cusparseCreateDnVec(&vecp, N, d_p, CUDA_R_64F));
-	cusparseDnVecDescr_t vecAx = NULL;
-	checkCudaErrors(cusparseCreateDnVec(&vecAx, N, d_Ax, CUDA_R_64F));
-
-	/* Initialize problem data */
-	cudaMemcpy(d_csr_columns, ja, nnz * sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_csr_offsets, ia, (N + 1) * sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_csr_values, a, nnz * sizeof(double), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_x, x, N * sizeof(double), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_r, B, N * sizeof(double), cudaMemcpyHostToDevice);
-
-	alpha = 1.0;
-	alpham1 = -1.0;
-	beta = 0.0;
-	r0 = 0.;
-
-	/* Allocate workspace for cuSPARSE */
-	size_t bufferSize = 0;
-	checkCudaErrors(cusparseSpMV_bufferSize(
-		cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA, vecx,
-		&beta, vecAx, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
-	void *buffer = NULL;
-	checkCudaErrors(cudaMalloc(&buffer, bufferSize));
-
-	/* Begin CG */
-	checkCudaErrors(cusparseSpMV(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-								 &alpha, matA, vecx, &beta, vecAx, CUDA_R_64F,
-								 CUSPARSE_SPMV_ALG_DEFAULT, buffer));
-	checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &rr));
-	checkCudaErrors(cublasDaxpy(cublasHandle, N, &alpham1, d_Ax, 1, d_r, 1));
-	checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1));
-
-	k = 1;
-
-	int MYK = 0;
-	double RESI = 0;
-	while (r1 > tol * tol * rr && k <= max_iter)
-	{
-		if (k > 1)
-		{
-			b = r1 / r0;
-			cublasStatus = cublasDscal(cublasHandle, N, &b, d_p, 1);
-			cublasStatus = cublasDaxpy(cublasHandle, N, &alpha, d_r, 1, d_p, 1);
-		}
-		else
-		{
-			cublasStatus = cublasDcopy(cublasHandle, N, d_r, 1, d_p, 1);
-		}
-
-		checkCudaErrors(cusparseSpMV(
-			cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA, vecp,
-			&beta, vecAx, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, buffer));
-		cublasStatus = cublasDdot(cublasHandle, N, d_p, 1, d_Ax, 1, &dot);
-
-		aa = r1 / dot;
-
-		cublasStatus = cublasDaxpy(cublasHandle, N, &aa, d_p, 1, d_x, 1);
-		na = -aa;
-		cublasStatus = cublasDaxpy(cublasHandle, N, &na, d_Ax, 1, d_r, 1);
-
-		r0 = r1;
-		cublasStatus = cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1);
-		cudaDeviceSynchronize();
-		MYK = k;
-		RESI = sqrt(r1) / sqrt(rr);
-		printf("iteration:%3d\nresidual:%e\n", MYK, RESI);
-		k++;
-	}
-	printf("iteration:%3d\nresidual:%e\n", MYK, RESI);
-	endTime = clock();
-	cudaMemcpy(x, d_x, N * sizeof(double), cudaMemcpyDeviceToHost);
-
-	// 更新应力场
-	for (int i = inlet; i < inlet + op; i++)
-	{
-		Pb[i].pressure = x[i - inlet];
-	}
-	for (int i = op; i < op + mp; i++)
-	{
-		Pb[i + para_macro].pressure = x[i];
-	}
-
-	cusparseDestroy(cusparseHandle);
-	cublasDestroy(cublasHandle);
-	if (matA)
-	{
-		checkCudaErrors(cusparseDestroySpMat(matA));
-	}
-	if (vecx)
-	{
-		checkCudaErrors(cusparseDestroyDnVec(vecx));
-	}
-	if (vecAx)
-	{
-		checkCudaErrors(cusparseDestroyDnVec(vecAx));
-	}
-	if (vecp)
-	{
-		checkCudaErrors(cusparseDestroyDnVec(vecp));
-	}
-	free(x);
-	cudaFree(d_x);
-	cudaFree(d_r);
-	cudaFree(d_p);
-	cudaFree(d_Ax);
-	cudaFree(d_csr_columns);
-	cudaFree(d_csr_offsets);
-	cudaFree(d_csr_values);
-	return 0;
-}
-void PNMsolver::Mysolver_for_inpermeability()
-{
-	auto start1 = high_resolution_clock::now();
-	double macro{0}, micro_advec{0}, micro_diff{0};
-
-	int n = 1;													// label of output file
-	int inter_n{0};												// The interation of outer loop of Newton-raphoon method
-	double total_flow = 0;										// accumulation production
-	ofstream outfile("Intrinsic_Permeability_mysolver_cg.txt"); // output permeability;
-	Flag_eigen = false;
-	Function_DS(inlet_pre);
-	memory();
-	Paramentinput();
-	initial_condition();
-	para_cal(1);
-	Matrix_permeability(1);
-
-	conjugateGradient_solver(1000000, 1e-8);
-
-	macro = macro_outlet_Q();
-	micro_advec = micro_outlet_advec_Q();
-
-	auto stop2 = high_resolution_clock::now();
-	auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-
-	outfile << (macro + micro_advec) * gas_vis * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) << "\t"
-			<< inlet_pre / 1e6 << "\t"
-			<< duration2.count() / 1000 << "s"
-			<< endl;
-	output(1, 1);
-	outfile.close();
-};
-
 double PNMsolver::clay_loss_per_step()
 {
 	double clay_loss_per_step = 0;
@@ -581,7 +353,7 @@ double PNMsolver::clay_loss_per_step()
 	{
 		if (Pb[i].type == 0)
 		{
-			clay_loss_per_step += Pb[i].pressure_old * porosity_LP * Pb[i].volume * 16 / (Pb[i].compre_old * 8.314 * Temperature) - Pb[i].pressure * porosity_LP * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
+			clay_loss_per_step += (Pb[i].pressure_old + refer_pressure) * Pb[i].volume * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * 16 / (Pb[i].compre_old * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * 16 / (Pb[i].compre * 8.314 * Temperature);
 		}
 	}
 	return (clay_loss_per_step);
@@ -593,7 +365,7 @@ double PNMsolver::fracture_loss_per_step()
 	{
 		if (Pb[i].type == 1)
 		{
-			fracture_loss_per_step += Pb[i].pressure_old * Pb[i].volume * 16 / (Pb[i].compre_old * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
+			fracture_loss_per_step += (Pb[i].pressure_old + refer_pressure) * Pb[i].volume * 16 / (Pb[i].compre_old * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
 		}
 	}
 	return (fracture_loss_per_step);
@@ -604,13 +376,13 @@ double PNMsolver::OM_HP_ad_loss_per_step()
 
 	for (int i = inlet; i < macro_n - outlet; i++)
 	{
-		double compre_1 = compre(Pb[i].pressure_old);
-		double compre_2 = compre(Pb[i].pressure);
-		double n_ad1 = n_max_ad * (K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old));
-		double n_ad2 = n_max_ad * (K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure));
+		double compre_1 = compre(Pb[i].pressure_old + refer_pressure);
+		double compre_2 = compre(Pb[i].pressure + refer_pressure);
+		double n_ad1 = n_max_ad * (K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure)));
+		double n_ad2 = n_max_ad * (K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure)));
 		if (Pb[i].type == 1)
 		{
-			OM_HP_ad_loss_per_step += Pb[i].volume * (1 - porosity_HP) * (n_ad1 - n_ad2) * 1000;
+			OM_HP_ad_loss_per_step += Pb[i].volume * (1 - porosity_HP2) * (n_ad1 - n_ad2) * 1000;
 		}
 	}
 	return (OM_HP_ad_loss_per_step);
@@ -621,13 +393,13 @@ double PNMsolver::OM_HP_free_loss_per_step()
 
 	for (int i = inlet; i < macro_n - outlet; i++)
 	{
-		double compre_1 = compre(Pb[i].pressure_old);
-		double compre_2 = compre(Pb[i].pressure);
-		double n_ad1 = n_max_ad * (K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old));
-		double n_ad2 = n_max_ad * (K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure));
+		double compre_1 = compre(Pb[i].pressure_old + refer_pressure);
+		double compre_2 = compre(Pb[i].pressure + refer_pressure);
+		double n_ad1 = n_max_ad * (K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure)));
+		double n_ad2 = n_max_ad * (K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure)));
 		if (Pb[i].type == 1)
 		{
-			OM_HP_free_loss_per_step += Pb[i].pressure_old * ((1 - porosity_HP) * (porosity - n_ad1 / Rho_ad) + porosity_HP) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * ((1 - porosity_HP) * (porosity - n_ad2 / Rho_ad) + porosity_HP) * 16 / (compre_2 * 8.314 * Temperature);
+			OM_HP_free_loss_per_step += (Pb[i].pressure_old + refer_pressure) * ((1 - porosity_HP2) * (micro_porosity_HP - n_ad1 / Rho_ad) + porosity_HP1) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * ((1 - porosity_HP2) * (micro_porosity_HP - n_ad2 / Rho_ad) + porosity_HP1) * 16 / (compre_2 * 8.314 * Temperature);
 		}
 	}
 	return (OM_HP_free_loss_per_step);
@@ -637,13 +409,13 @@ double PNMsolver::OM_LP_ad_loss_per_step()
 	double OM_LP_ad_loss_per_step = 0;
 	for (int i = inlet; i < macro_n - outlet; i++)
 	{
-		double compre_1 = compre(Pb[i].pressure_old);
-		double compre_2 = compre(Pb[i].pressure);
-		double n_ad1 = n_max_ad * (K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old));
-		double n_ad2 = n_max_ad * (K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure));
+		double compre_1 = compre(Pb[i].pressure_old + refer_pressure);
+		double compre_2 = compre(Pb[i].pressure + refer_pressure);
+		double n_ad1 = n_max_ad * (K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure)));
+		double n_ad2 = n_max_ad * (K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure)));
 		if (Pb[i].type == 1)
 		{
-			OM_LP_ad_loss_per_step += Pb[i].volume * (1 - porosity_LP) * (n_ad1 - n_ad2) * 1000;
+			OM_LP_ad_loss_per_step += Pb[i].volume * (1 - porosity_LP2) * (n_ad1 - n_ad2) * 1000;
 		}
 	}
 	return (OM_LP_ad_loss_per_step);
@@ -653,13 +425,13 @@ double PNMsolver::OM_LP_free_loss_per_step()
 	double OM_LP_free_loss_per_step = 0;
 	for (int i = inlet; i < macro_n - outlet; i++)
 	{
-		double compre_1 = compre(Pb[i].pressure_old);
-		double compre_2 = compre(Pb[i].pressure);
-		double n_ad1 = n_max_ad * (K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old));
-		double n_ad2 = n_max_ad * (K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure));
+		double compre_1 = compre(Pb[i].pressure_old + refer_pressure);
+		double compre_2 = compre(Pb[i].pressure + refer_pressure);
+		double n_ad1 = n_max_ad * (K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure)));
+		double n_ad2 = n_max_ad * (K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure)));
 		if (Pb[i].type == 1)
 		{
-			OM_LP_free_loss_per_step += Pb[i].pressure_old * ((1 - porosity_LP) * (porosity - n_ad1 / Rho_ad) + porosity_HP) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * ((1 - porosity_LP) * (porosity - n_ad2 / Rho_ad) + porosity_HP) * 16 / (compre_2 * 8.314 * Temperature);
+			OM_LP_free_loss_per_step += (Pb[i].pressure_old + refer_pressure) * ((1 - porosity_LP2) * (micro_porosity_LP - n_ad1 / Rho_ad) + porosity_LP1) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * ((1 - porosity_LP2) * (micro_porosity_LP - n_ad2 / Rho_ad) + porosity_LP1) * 16 / (compre_2 * 8.314 * Temperature);
 		}
 	}
 	return (OM_LP_free_loss_per_step);
@@ -675,11 +447,11 @@ double PNMsolver::REV_OUT()
 			double rho{0};
 			if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 			{
-				rho = Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature); // rho mol/m^3
+				rho = (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature); // rho mol/m^3
 			}
 			else
 			{
-				rho = Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature); // rho mol/m^3
+				rho = (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature); // rho mol/m^3
 			}
 			Q_outlet += dt * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * Tb[j].Conductivity * 16 * rho; // 质量流量 g
 		}
@@ -692,11 +464,11 @@ double PNMsolver::REV_OUT()
 			double rho{0};
 			if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 			{
-				rho = Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature); // rho mol/m^3
+				rho = (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature); // rho mol/m^3
 			}
 			else
 			{
-				rho = Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature); // rho mol/m^3
+				rho = (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature); // rho mol/m^3
 			}
 			Q_outlet += dt * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * Tb[j].Conductivity * 16 * rho; // 质量流量 g
 		}
@@ -734,64 +506,63 @@ void PNMsolver::Para_cal_REV()
 	for (int i = 0; i < pn; i++)
 	{
 		// Pb[i].compre = 0.702 * pow(M_E, -2.5 * Tr) * pow(Pr, 2) - 5.524 * pow(M_E, -2.5 * Tr) * Pr + 0.044 * pow(Tr, 2) - 0.164 * Tr + 1.15;
-		Pb[i].compre = compre(Pb[i].pressure);
+		Pb[i].compre = compre(Pb[i].pressure + refer_pressure);
 		Pb[i].compre_old = Pb[i].compre;
-		Pb[i].visco = visco(Pb[i].pressure, Pb[i].compre, Temperature);
+		Pb[i].visco = visco(Pb[i].pressure + refer_pressure, Pb[i].compre, Temperature);
 		Pb[i].visco_old = Pb[i].visco;
 	}
 
 	// Total gas content
 	for (int i = inlet; i < macro_n - outlet; i++)
 	{
-		double compre_1 = compre(inlet_pre);
-		double compre_2 = compre(outlet_pre);
+		double compre_1 = compre(inlet_pre + refer_pressure);
+		double compre_2 = compre(outlet_pre + refer_pressure);
 
-		double n_ad1 = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-		double n_ad2 = n_max_ad * (K_langmuir * outlet_pre / (1 + K_langmuir * outlet_pre));
+		double n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+		double n_ad2 = n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) / (1 + K_langmuir * (outlet_pre + refer_pressure)));
 		if (Pb[i].type == 0)
 		{
-			total_clay += inlet_pre * Pb[i].volume * porosity_LP * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * porosity_LP * 16 / (compre_2 * 8.314 * Temperature);
+			total_clay += (inlet_pre + refer_pressure) * Pb[i].volume * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * 16 / (compre_2 * 8.314 * Temperature);
 		}
 		else if (Pb[i].type == 1)
 		{
-			total_fracture += inlet_pre * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
+			total_fracture += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
 		}
 		else if (Pb[i].type == 2)
 		{
-			total_OM_HP_free += inlet_pre * ((1 - porosity_HP) * (porosity - n_ad1 / Rho_ad) + porosity_HP) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * ((1 - porosity_HP) * (porosity - n_ad2 / Rho_ad) + porosity_HP) * 16 / (compre_2 * 8.314 * Temperature);
-			total_OM_HP_ad += Pb[i].volume * (1 - porosity_HP) * (n_ad1 - n_ad2) * 1000;
+			total_OM_HP_free += (inlet_pre + refer_pressure) * ((1 - porosity_HP2) * (micro_porosity_HP - n_ad1 / Rho_ad) + porosity_HP1) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * ((1 - porosity_HP2) * (micro_porosity_HP - n_ad2 / Rho_ad) + porosity_HP1) * 16 / (compre_2 * 8.314 * Temperature);
+			total_OM_HP_ad += Pb[i].volume * (1 - porosity_HP2) * (n_ad1 - n_ad2) * 1000;
 		}
 		else if (Pb[i].type == 3)
 		{
-			total_OM_LP_free += inlet_pre * ((1 - porosity_LP) * (porosity - n_ad1 / Rho_ad) + porosity_LP) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * ((1 - porosity_LP) * (porosity - n_ad2 / Rho_ad) + porosity_LP) * 16 / (compre_2 * 8.314 * Temperature);
-			total_OM_LP_ad += Pb[i].volume * (1 - porosity_LP) * (n_ad1 - n_ad2) * 1000;
+			total_OM_LP_free += (inlet_pre + refer_pressure) * ((1 - porosity_LP2) * (micro_porosity_LP - n_ad1 / Rho_ad) + porosity_LP1) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * ((1 - porosity_LP2) * (micro_porosity_LP - n_ad2 / Rho_ad) + porosity_LP1) * 16 / (compre_2 * 8.314 * Temperature);
+			total_OM_LP_ad += Pb[i].volume * (1 - porosity_LP2) * (n_ad1 - n_ad2) * 1000;
 		}
 	}
 	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 	{
-		double compre_1 = compre(inlet_pre);
-		double compre_2 = compre(outlet_pre);
+		double compre_1 = compre(inlet_pre + refer_pressure);
+		double compre_2 = compre(outlet_pre + refer_pressure);
 
-		double n_ad1 = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-		double n_ad2 = n_max_ad * (K_langmuir * outlet_pre / (1 + K_langmuir * outlet_pre));
-
+		double n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+		double n_ad2 = n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) / (1 + K_langmuir * (outlet_pre + refer_pressure)));
 		if (Pb[i].type == 0)
 		{
-			total_clay += inlet_pre * Pb[i].volume * porosity_LP * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * porosity_LP * 16 / (compre_2 * 8.314 * Temperature);
+			total_clay += (inlet_pre + refer_pressure) * Pb[i].volume * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * 16 / (compre_2 * 8.314 * Temperature);
 		}
 		else if (Pb[i].type == 1)
 		{
-			total_fracture += inlet_pre * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
+			total_fracture += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
 		}
 		else if (Pb[i].type == 2)
 		{
-			total_OM_HP_free += inlet_pre * ((1 - porosity_HP) * (porosity - n_ad1 / Rho_ad) + porosity_HP) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * ((1 - porosity_HP) * (porosity - n_ad2 / Rho_ad) + porosity_HP) * 16 / (compre_2 * 8.314 * Temperature);
-			total_OM_HP_ad += Pb[i].volume * (1 - porosity_HP) * (n_ad1 - n_ad2) * 1000;
+			total_OM_HP_free += (inlet_pre + refer_pressure) * ((1 - porosity_HP2) * (micro_porosity_HP - n_ad1 / Rho_ad) + porosity_HP1) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * ((1 - porosity_HP2) * (micro_porosity_HP - n_ad2 / Rho_ad) + porosity_HP1) * 16 / (compre_2 * 8.314 * Temperature);
+			total_OM_HP_ad += Pb[i].volume * (1 - porosity_HP2) * (n_ad1 - n_ad2) * 1000;
 		}
 		else if (Pb[i].type == 3)
 		{
-			total_OM_LP_free += inlet_pre * ((1 - porosity_LP) * (porosity - n_ad1 / Rho_ad) + porosity_LP) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * ((1 - porosity_LP) * (porosity - n_ad2 / Rho_ad) + porosity_LP) * 16 / (compre_2 * 8.314 * Temperature);
-			total_OM_LP_ad += Pb[i].volume * (1 - porosity_LP) * (n_ad1 - n_ad2) * 1000;
+			total_OM_LP_free += (inlet_pre + refer_pressure) * ((1 - porosity_LP2) * (micro_porosity_LP - n_ad1 / Rho_ad) + porosity_LP1) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * ((1 - porosity_LP2) * (micro_porosity_LP - n_ad2 / Rho_ad) + porosity_LP1) * 16 / (compre_2 * 8.314 * Temperature);
+			total_OM_LP_ad += Pb[i].volume * (1 - porosity_LP2) * (n_ad1 - n_ad2) * 1000;
 		}
 	}
 	total_p = total_clay + total_fracture + total_OM_HP_free + total_OM_HP_ad + total_OM_LP_free + total_OM_LP_ad;
@@ -820,13 +591,13 @@ void PNMsolver::Para_cal_REV()
 		double Apparent_K_ID1{0};
 		double Apparent_K_ID2{0};
 
-		Rho_ID1 = 0.016 * Pb[Tb_in[i].ID_1].pressure / (Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature);
-		Rho_ID2 = 0.016 * Pb[Tb_in[i].ID_2].pressure / (Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature);
+		Rho_ID1 = 0.016 * (Pb[Tb_in[i].ID_1].pressure + refer_pressure) / (Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature);
+		Rho_ID2 = 0.016 * (Pb[Tb_in[i].ID_2].pressure + refer_pressure) / (Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature);
 		if (Pb[Tb_in[i].ID_1].type == 0) // clay
 		{
-			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / Pb[Tb_in[i].ID_1].pressure * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (6.96e-9);
+			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / (Pb[Tb_in[i].ID_1].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (L_CLAY);
 			Slip_ID1 = Function_Slip_clay(Knusen_number_ID1);
-			Apparent_K_ID1 = Slip_ID1 * K_OM_LP;
+			Apparent_K_ID1 = Slip_ID1 * K_Clay;
 		}
 		else if (Pb[Tb_in[i].ID_1].type == 1) // crack
 		{
@@ -836,22 +607,22 @@ void PNMsolver::Para_cal_REV()
 		}
 		else if (Pb[Tb_in[i].ID_1].type == 2) // OM_type1
 		{
-			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / Pb[Tb_in[i].ID_1].pressure * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (66e-9);
+			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / (Pb[Tb_in[i].ID_1].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (L_OM_1);
 			Slip_ID1 = Function_Slip(Knusen_number_ID1);
-			Apparent_K_ID1 = Slip_ID1 * K_OM_HP + Pb[Tb_in[i].ID_1].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * Pb[Tb_in[i].ID_1].pressure, 2) / Rho_ID1;
+			Apparent_K_ID1 = Slip_ID1 * K_OM_HP + Pb[Tb_in[i].ID_1].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * (Pb[Tb_in[i].ID_1].pressure + refer_pressure), 2) / Rho_ID1;
 		}
 		else if (Pb[Tb_in[i].ID_1].type == 3) // OM_type2
 		{
-			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / Pb[Tb_in[i].ID_1].pressure * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (6.96e-9);
+			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / (Pb[Tb_in[i].ID_1].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (L_OM_2);
 			Slip_ID1 = Function_Slip(Knusen_number_ID1);
-			Apparent_K_ID1 = Slip_ID1 * K_OM_LP + Pb[Tb_in[i].ID_1].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * Pb[Tb_in[i].ID_1].pressure, 2) / Rho_ID1;
+			Apparent_K_ID1 = Slip_ID1 * K_OM_LP + Pb[Tb_in[i].ID_1].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * (Pb[Tb_in[i].ID_1].pressure + refer_pressure), 2) / Rho_ID1;
 		}
-
+		// 6.96e-9
 		if (Pb[Tb_in[i].ID_2].type == 0) // clay
 		{
-			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / Pb[Tb_in[i].ID_2].pressure * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (6.96e-9);
+			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / (Pb[Tb_in[i].ID_2].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (L_CLAY);
 			Slip_ID2 = Function_Slip_clay(Knusen_number_ID2);
-			Apparent_K_ID2 = Slip_ID2 * K_OM_LP;
+			Apparent_K_ID2 = Slip_ID2 * K_Clay;
 		}
 		else if (Pb[Tb_in[i].ID_2].type == 1) // crack
 		{
@@ -861,15 +632,15 @@ void PNMsolver::Para_cal_REV()
 		}
 		else if (Pb[Tb_in[i].ID_2].type == 2) // OM_type1
 		{
-			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / Pb[Tb_in[i].ID_2].pressure * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (66e-9);
+			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / (Pb[Tb_in[i].ID_2].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (L_OM_1);
 			Slip_ID2 = Function_Slip(Knusen_number_ID2);
-			Apparent_K_ID2 = Slip_ID2 * K_OM_HP + Pb[Tb_in[i].ID_2].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * Pb[Tb_in[i].ID_2].pressure, 2) / Rho_ID2;
+			Apparent_K_ID2 = Slip_ID2 * K_OM_HP + Pb[Tb_in[i].ID_2].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * (Pb[Tb_in[i].ID_2].pressure + refer_pressure), 2) / Rho_ID2;
 		}
-		else if (Pb[Tb_in[i].ID_1].type == 3) // OM_type2
+		else if (Pb[Tb_in[i].ID_2].type == 3) // OM_type2
 		{
-			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / Pb[Tb_in[i].ID_2].pressure * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (6.96e-9);
+			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / (Pb[Tb_in[i].ID_2].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (L_OM_2);
 			Slip_ID2 = Function_Slip(Knusen_number_ID2);
-			Apparent_K_ID2 = Slip_ID2 * K_OM_LP + Pb[Tb_in[i].ID_2].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * Pb[Tb_in[i].ID_2].pressure, 2) / Rho_ID2;
+			Apparent_K_ID2 = Slip_ID2 * K_OM_LP + Pb[Tb_in[i].ID_2].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * (Pb[Tb_in[i].ID_2].pressure + refer_pressure), 2) / Rho_ID2;
 		}
 
 		temp1 = pi * pow(Pb[Tb_in[i].ID_1].Radiu, 2) * Apparent_K_ID1 / Pb[Tb_in[i].ID_1].visco / Pb[Tb_in[i].ID_1].Radiu;
@@ -922,6 +693,14 @@ void PNMsolver::Para_cal_REV()
 	{
 		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
 	}
+
+	// ofstream outfile("conduct.txt");
+
+	// for (size_t i = 0; i < 2 * tn; i++)
+	// {
+	// 	outfile << Tb_in[i].Conductivity << " ; " << Tb[i].Conductivity << endl;
+	// }
+	// outfile.close();
 }
 
 void PNMsolver::Para_cal_REV_newton()
@@ -930,8 +709,8 @@ void PNMsolver::Para_cal_REV_newton()
 	for (int i = 0; i < pn; i++)
 	{
 		// Pb[i].compre = 0.702 * pow(M_E, -2.5 * Tr) * pow(Pr, 2) - 5.524 * pow(M_E, -2.5 * Tr) * Pr + 0.044 * pow(Tr, 2) - 0.164 * Tr + 1.15;
-		Pb[i].compre = compre(Pb[i].pressure);
-		Pb[i].visco = visco(Pb[i].pressure, Pb[i].compre, Temperature);
+		Pb[i].compre = compre(Pb[i].pressure + refer_pressure);
+		Pb[i].visco = visco(Pb[i].pressure + refer_pressure, Pb[i].compre, Temperature);
 	}
 
 	// 水力传导系数计算
@@ -951,13 +730,13 @@ void PNMsolver::Para_cal_REV_newton()
 		double Apparent_K_ID1{0};
 		double Apparent_K_ID2{0};
 
-		Rho_ID1 = 0.016 * Pb[Tb_in[i].ID_1].pressure / (Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature);
-		Rho_ID2 = 0.016 * Pb[Tb_in[i].ID_2].pressure / (Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature);
+		Rho_ID1 = 0.016 * (Pb[Tb_in[i].ID_1].pressure + refer_pressure) / (Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature);
+		Rho_ID2 = 0.016 * (Pb[Tb_in[i].ID_2].pressure + refer_pressure) / (Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature);
 		if (Pb[Tb_in[i].ID_1].type == 0) // clay
 		{
-			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / Pb[Tb_in[i].ID_1].pressure * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (6.96e-9);
+			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / (Pb[Tb_in[i].ID_1].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (L_CLAY);
 			Slip_ID1 = Function_Slip_clay(Knusen_number_ID1);
-			Apparent_K_ID1 = Slip_ID1 * K_OM_LP;
+			Apparent_K_ID1 = Slip_ID1 * K_Clay;
 		}
 		else if (Pb[Tb_in[i].ID_1].type == 1) // crack
 		{
@@ -967,22 +746,22 @@ void PNMsolver::Para_cal_REV_newton()
 		}
 		else if (Pb[Tb_in[i].ID_1].type == 2) // OM_type1
 		{
-			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / Pb[Tb_in[i].ID_1].pressure * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (66e-9);
+			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / (Pb[Tb_in[i].ID_1].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (L_OM_1);
 			Slip_ID1 = Function_Slip(Knusen_number_ID1);
-			Apparent_K_ID1 = Slip_ID1 * K_OM_HP + Pb[Tb_in[i].ID_1].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * Pb[Tb_in[i].ID_1].pressure, 2) / Rho_ID1;
+			Apparent_K_ID1 = Slip_ID1 * K_OM_HP + Pb[Tb_in[i].ID_1].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * (Pb[Tb_in[i].ID_1].pressure + refer_pressure), 2) / Rho_ID1;
 		}
 		else if (Pb[Tb_in[i].ID_1].type == 3) // OM_type2
 		{
-			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / Pb[Tb_in[i].ID_1].pressure * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (6.96e-9);
+			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / (Pb[Tb_in[i].ID_1].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (L_OM_2);
 			Slip_ID1 = Function_Slip(Knusen_number_ID1);
-			Apparent_K_ID1 = Slip_ID1 * K_OM_LP + Pb[Tb_in[i].ID_1].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * Pb[Tb_in[i].ID_1].pressure, 2) / Rho_ID1;
+			Apparent_K_ID1 = Slip_ID1 * K_OM_LP + Pb[Tb_in[i].ID_1].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * (Pb[Tb_in[i].ID_1].pressure + refer_pressure), 2) / Rho_ID1;
 		}
-
+		// 6.96e-9
 		if (Pb[Tb_in[i].ID_2].type == 0) // clay
 		{
-			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / Pb[Tb_in[i].ID_2].pressure * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (6.96e-9);
+			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / (Pb[Tb_in[i].ID_2].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (L_CLAY);
 			Slip_ID2 = Function_Slip_clay(Knusen_number_ID2);
-			Apparent_K_ID2 = Slip_ID2 * K_OM_LP;
+			Apparent_K_ID2 = Slip_ID2 * K_Clay;
 		}
 		else if (Pb[Tb_in[i].ID_2].type == 1) // crack
 		{
@@ -992,22 +771,22 @@ void PNMsolver::Para_cal_REV_newton()
 		}
 		else if (Pb[Tb_in[i].ID_2].type == 2) // OM_type1
 		{
-			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / Pb[Tb_in[i].ID_2].pressure * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (66e-9);
+			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / (Pb[Tb_in[i].ID_2].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (L_OM_1);
 			Slip_ID2 = Function_Slip(Knusen_number_ID2);
-			Apparent_K_ID2 = Slip_ID2 * K_OM_HP + Pb[Tb_in[i].ID_2].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * Pb[Tb_in[i].ID_2].pressure, 2) / Rho_ID2;
+			Apparent_K_ID2 = Slip_ID2 * K_OM_HP + Pb[Tb_in[i].ID_2].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * (Pb[Tb_in[i].ID_2].pressure + refer_pressure), 2) / Rho_ID2;
 		}
-		else if (Pb[Tb_in[i].ID_1].type == 3) // OM_type2
+		else if (Pb[Tb_in[i].ID_2].type == 3) // OM_type2
 		{
-			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / Pb[Tb_in[i].ID_2].pressure * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (6.96e-9);
+			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / (Pb[Tb_in[i].ID_2].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (L_OM_2);
 			Slip_ID2 = Function_Slip(Knusen_number_ID2);
-			Apparent_K_ID2 = Slip_ID2 * K_OM_LP + Pb[Tb_in[i].ID_2].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * Pb[Tb_in[i].ID_2].pressure, 2) / Rho_ID2;
+			Apparent_K_ID2 = Slip_ID2 * K_OM_LP + Pb[Tb_in[i].ID_2].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * (Pb[Tb_in[i].ID_2].pressure + refer_pressure), 2) / Rho_ID2;
 		}
+
 		temp1 = pi * pow(Pb[Tb_in[i].ID_1].Radiu, 2) * Apparent_K_ID1 / Pb[Tb_in[i].ID_1].visco / Pb[Tb_in[i].ID_1].Radiu;
 		temp2 = pi * pow(Pb[Tb_in[i].ID_2].Radiu, 2) * Apparent_K_ID2 / Pb[Tb_in[i].ID_2].visco / Pb[Tb_in[i].ID_2].Radiu;
 
 		Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 	}
-
 	// merge throat
 	int label = 0;
 	Tb[0].ID_1 = Tb_in[0].ID_1;
@@ -1055,9 +834,18 @@ void PNMsolver::Para_cal_REV_newton()
 	}
 }
 
-void PNMsolver::AMGXsplver_REV()
+void PNMsolver::AMGX_solver_REV()
 {
-	Flag_eigen = false;
+	if (Sw_clay >= 0.95)
+	{
+		K_Clay = 1e-30;
+	}
+
+	if (Sw_om >= 0.95)
+	{
+		K_OM_HP = 1e-30;
+		K_OM_LP = 1e-30;
+	}
 	auto start1 = high_resolution_clock::now();
 	double acu_clay{0}, acu_fracture{0}, acu_ad_OM_HP{0}, acu_free_OM_HP{0}, acu_ad_OM_LP{0}, acu_free_OM_LP{0};
 
@@ -1066,7 +854,9 @@ void PNMsolver::AMGXsplver_REV()
 	double total_loss = 0;						 // accumulation production
 	ofstream outfile("Transient.txt", ios::app); // output permeability;
 
-	Function_DS(inlet_pre);
+	Flag_eigen = false;
+	Flag_Hybrid = false;
+	Function_DS(inlet_pre + refer_pressure);
 	memory();
 	Paramentinput();
 	if (time_step != 0)
@@ -1082,12 +872,12 @@ void PNMsolver::AMGXsplver_REV()
 	}
 
 	Para_cal_REV();
-	PressureMatrix_REV();
+	Matrix_gas_pro_REV();
 	// begin AMGX initialization
 	AMGX_initialize();
 
 	AMGX_config_handle config;
-	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/FGMRES.json"); // 200
+	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/FGMRES_AGGREGATION.json"); // 200
 
 	AMGX_resources_handle rsrc;
 	AMGX_resources_create_simple(&rsrc, config);
@@ -1150,15 +940,15 @@ void PNMsolver::AMGXsplver_REV()
 	// end AMGX initialization
 	// ************ begin AMGX solver ************
 	int nn{1};
-	AMGXsolver_subroutine(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+	AMGX_solver_subroutine(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 	do
 	{
 		inter_n = 0;
 		do
 		{
 			Para_cal_REV_newton();
-			PressureMatrix_REV();
-			AMGXsolver_subroutine(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+			Matrix_gas_pro_REV();
+			AMGX_solver_subroutine(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 			// MKLsolve();
 			inter_n++;
 			cout << "Inf_norm = " << norm_inf << "\t\t"
@@ -1180,54 +970,54 @@ void PNMsolver::AMGXsplver_REV()
 		// acumu gas loss
 		for (int i = inlet; i < macro_n - outlet; i++)
 		{
-			double compre_1 = compre(inlet_pre);
-			double compre_2 = compre(Pb[i].pressure);
-			double n_ad1 = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-			double n_ad2 = n_max_ad * (K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure));
+			double compre_1 = compre(inlet_pre + refer_pressure);
+			double compre_2 = compre(Pb[i].pressure + refer_pressure);
+			double n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+			double n_ad2 = n_max_ad * (K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure)));
 
 			if (Pb[i].type == 0)
 			{
-				acu_clay += inlet_pre * Pb[i].volume * porosity_LP * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * porosity_LP * 16 / (compre_2 * 8.314 * Temperature);
+				acu_clay += (inlet_pre + refer_pressure) * Pb[i].volume * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * 16 / (compre_2 * 8.314 * Temperature);
 			}
 			else if (Pb[i].type == 1)
 			{
-				acu_fracture += inlet_pre * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
+				acu_fracture += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
 			}
 			else if (Pb[i].type == 2)
 			{
-				acu_free_OM_HP += inlet_pre * ((1 - porosity_HP) * (porosity - n_ad1 / Rho_ad) + porosity_HP) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * ((1 - porosity_HP) * (porosity - n_ad2 / Rho_ad) + porosity_HP) * 16 / (compre_2 * 8.314 * Temperature);
-				acu_ad_OM_HP += Pb[i].volume * (1 - porosity_HP) * (n_ad1 - n_ad2) * 1000;
+				acu_free_OM_HP += (inlet_pre + refer_pressure) * ((1 - porosity_HP2) * (micro_porosity_HP - n_ad1 / Rho_ad) + porosity_HP1) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * ((1 - porosity_HP2) * (micro_porosity_HP - n_ad2 / Rho_ad) + porosity_HP1) * 16 / (compre_2 * 8.314 * Temperature);
+				acu_ad_OM_HP += Pb[i].volume * (1 - porosity_HP2) * (n_ad1 - n_ad2) * 1000;
 			}
 			else if (Pb[i].type == 3)
 			{
-				acu_free_OM_LP += inlet_pre * ((1 - porosity_LP) * (porosity - n_ad1 / Rho_ad) + porosity_LP) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * ((1 - porosity_LP) * (porosity - n_ad2 / Rho_ad) + porosity_LP) * 16 / (compre_2 * 8.314 * Temperature);
-				acu_ad_OM_LP += Pb[i].volume * (1 - porosity_LP) * (n_ad1 - n_ad2) * 1000;
+				acu_free_OM_LP += (inlet_pre + refer_pressure) * ((1 - porosity_LP2) * (micro_porosity_LP - n_ad1 / Rho_ad) + porosity_LP1) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * ((1 - porosity_LP2) * (micro_porosity_LP - n_ad2 / Rho_ad) + porosity_LP1) * 16 / (compre_2 * 8.314 * Temperature);
+				acu_ad_OM_LP += Pb[i].volume * (1 - porosity_LP2) * (n_ad1 - n_ad2) * 1000;
 			}
 		}
 		for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 		{
-			double compre_1 = compre(inlet_pre);
-			double compre_2 = compre(Pb[i].pressure);
-			double n_ad1 = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-			double n_ad2 = n_max_ad * (K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure));
+			double compre_1 = compre(inlet_pre + refer_pressure);
+			double compre_2 = compre(Pb[i].pressure + refer_pressure);
+			double n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+			double n_ad2 = n_max_ad * (K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure)));
 
 			if (Pb[i].type == 0)
 			{
-				acu_clay += inlet_pre * Pb[i].volume * porosity_LP * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * porosity_LP * 16 / (compre_2 * 8.314 * Temperature);
+				acu_clay += (inlet_pre + refer_pressure) * Pb[i].volume * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * 16 / (compre_2 * 8.314 * Temperature);
 			}
 			else if (Pb[i].type == 1)
 			{
-				acu_fracture += inlet_pre * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
+				acu_fracture += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
 			}
 			else if (Pb[i].type == 2)
 			{
-				acu_free_OM_HP += inlet_pre * ((1 - porosity_HP) * (porosity - n_ad1 / Rho_ad) + porosity_HP) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * ((1 - porosity_HP) * (porosity - n_ad2 / Rho_ad) + porosity_HP) * 16 / (compre_2 * 8.314 * Temperature);
-				acu_ad_OM_HP += Pb[i].volume * (1 - porosity_HP) * (n_ad1 - n_ad2) * 1000;
+				acu_free_OM_HP += (inlet_pre + refer_pressure) * ((1 - porosity_HP2) * (micro_porosity_HP - n_ad1 / Rho_ad) + porosity_HP1) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * ((1 - porosity_HP2) * (micro_porosity_HP - n_ad2 / Rho_ad) + porosity_HP1) * 16 / (compre_2 * 8.314 * Temperature);
+				acu_ad_OM_HP += Pb[i].volume * (1 - porosity_HP2) * (n_ad1 - n_ad2) * 1000;
 			}
 			else if (Pb[i].type == 3)
 			{
-				acu_free_OM_LP += inlet_pre * ((1 - porosity_LP) * (porosity - n_ad1 / Rho_ad) + porosity_LP) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * ((1 - porosity_LP) * (porosity - n_ad2 / Rho_ad) + porosity_LP) * 16 / (compre_2 * 8.314 * Temperature);
-				acu_ad_OM_LP += Pb[i].volume * (1 - porosity_LP) * (n_ad1 - n_ad2) * 1000;
+				acu_free_OM_LP += (inlet_pre + refer_pressure) * ((1 - porosity_LP2) * (micro_porosity_LP - n_ad1 / Rho_ad) + porosity_LP1) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * ((1 - porosity_LP2) * (micro_porosity_LP - n_ad2 / Rho_ad) + porosity_LP1) * 16 / (compre_2 * 8.314 * Temperature);
+				acu_ad_OM_LP += Pb[i].volume * (1 - porosity_LP2) * (n_ad1 - n_ad2) * 1000;
 			}
 		}
 
@@ -1284,10 +1074,10 @@ void PNMsolver::AMGXsplver_REV()
 			Pb[i].compre_old = Pb[i].compre;
 		}
 
-		// if (inter_n <= 10)
-		// {
-		// 	dt = dt * 2;
-		// }
+		if (inter_n <= 100 && dt < 1e-1)
+		{
+			dt = dt * 2;
+		}
 
 		if (total_loss / total_p > 0.01 * n)
 		{
@@ -1327,7 +1117,7 @@ void PNMsolver::AMGXsplver_REV()
 	// ************ end AMGX solver ************
 }
 
-void PNMsolver::PressureMatrix_REV()
+void PNMsolver::Matrix_gas_pro_REV()
 {
 	int num;	  // 每行第一个非0参数的累计编号
 	int num1 = 0; // 矩阵中每行的非0数据数量
@@ -1354,19 +1144,19 @@ void PNMsolver::PressureMatrix_REV()
 	{
 		if (Pb[i].type == 0)
 		{
-			B[i - inlet] = porosity_LP * (-0.016) * Pb[i].volume * (Pb[i].pressure / Pb[i].compre - Pb[i].pressure_old / Pb[i].compre_old) / (8.314 * Temperature * dt);
+			B[i - inlet] = -0.016 * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * Pb[i].volume * ((Pb[i].pressure + refer_pressure) / Pb[i].compre - (Pb[i].pressure_old + refer_pressure) / Pb[i].compre_old) / (8.314 * Temperature * dt);
 		}
 		else if (Pb[i].type == 1)
 		{
-			B[i - inlet] = (-0.016) * Pb[i].volume * (Pb[i].pressure / Pb[i].compre - Pb[i].pressure_old / Pb[i].compre_old) / (8.314 * Temperature * dt);
+			B[i - inlet] = (-0.016) * Pb[i].volume * ((Pb[i].pressure + refer_pressure) / Pb[i].compre - (Pb[i].pressure_old + refer_pressure) / Pb[i].compre_old) / (8.314 * Temperature * dt);
 		}
 		else if (Pb[i].type == 2)
 		{
-			B[i - para_macro] = -0.016 * (porosity_HP + (1 - porosity_HP) * porosity) * Pb[i].volume * (Pb[i].pressure / Pb[i].compre - Pb[i].pressure_old / Pb[i].compre_old) / (8.314 * Temperature * dt) - (1 - porosity_HP) * Pb[i].volume / dt * ((1 - 0.016 * Pb[i].pressure / (Pb[i].compre * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure)) - (1 - 0.016 * Pb[i].pressure_old / (Pb[i].compre_old * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old)));
+			B[i - para_macro] = -0.016 * (porosity_HP1 + (1 - porosity_HP2) * micro_porosity_HP) * Pb[i].volume * ((Pb[i].pressure + refer_pressure) / Pb[i].compre - (Pb[i].pressure_old + refer_pressure) / Pb[i].compre_old) / (8.314 * Temperature * dt) - (1 - porosity_HP2) * Pb[i].volume / dt * ((1 - 0.016 * (Pb[i].pressure + refer_pressure) / (Pb[i].compre * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure))) - (1 - 0.016 * (Pb[i].pressure_old + refer_pressure) / (Pb[i].compre_old * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure))));
 		}
 		else if (Pb[i].type == 3)
 		{
-			B[i - para_macro] = -0.016 * (porosity_LP + (1 - porosity_LP) * porosity) * Pb[i].volume * (Pb[i].pressure / Pb[i].compre - Pb[i].pressure_old / Pb[i].compre_old) / (8.314 * Temperature * dt) - (1 - porosity_LP) * Pb[i].volume / dt * ((1 - 0.016 * Pb[i].pressure / (Pb[i].compre * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure)) - (1 - 0.016 * Pb[i].pressure_old / (Pb[i].compre_old * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old)));
+			B[i - para_macro] = -0.016 * (porosity_LP1 + (1 - porosity_LP2) * micro_porosity_LP) * Pb[i].volume * ((Pb[i].pressure + refer_pressure) / Pb[i].compre - (Pb[i].pressure_old + refer_pressure) / Pb[i].compre_old) / (8.314 * Temperature * dt) - (1 - porosity_LP2) * Pb[i].volume / dt * ((1 - 0.016 * (Pb[i].pressure + refer_pressure) / (Pb[i].compre * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure))) - (1 - 0.016 * (Pb[i].pressure_old + refer_pressure) / (Pb[i].compre_old * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure))));
 		}
 
 		temp = 0, temp1 = 0;
@@ -1378,33 +1168,33 @@ void PNMsolver::PressureMatrix_REV()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 			}
 			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n) // 出口
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 			}
 			else
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 
 				if (Tb[j].ID_1 > Tb[j].ID_2)
@@ -1421,7 +1211,7 @@ void PNMsolver::PressureMatrix_REV()
 
 		if (Pb[i].type == 0)
 		{
-			a[num + temp - 1] = 0.016 * Pb[i].volume * porosity_LP / (8.314 * Temperature * dt * Pb[i].compre); // 主对角线的初始值
+			a[num + temp - 1] = 0.016 * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre); // 主对角线的初始值
 		}
 		else if (Pb[i].type == 1)
 		{
@@ -1429,11 +1219,11 @@ void PNMsolver::PressureMatrix_REV()
 		}
 		else if (Pb[i].type == 2)
 		{
-			a[num + temp - 1] = 0.016 * (porosity_HP + (1 - porosity_HP) * porosity) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre) + (1 - porosity_HP) * Pb[i].volume / dt * (-2 * n_max_ad * 0.016 * K_langmuir * Pb[i].pressure - n_max_ad * 0.016 * pow(K_langmuir * Pb[i].pressure, 2) + n_max_ad * K_langmuir * Pb[i].compre * 8.314 * Temperature * Rho_ad) / (Pb[i].compre * 8.314 * Temperature * Rho_ad * pow((1 + K_langmuir * Pb[i].pressure), 2));
+			a[num + temp - 1] = 0.016 * (porosity_HP1 + (1 - porosity_HP2) * micro_porosity_HP) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre) + (1 - porosity_HP2) * Pb[i].volume / dt * (-2 * n_max_ad * 0.016 * K_langmuir * (Pb[i].pressure + refer_pressure) - n_max_ad * 0.016 * pow(K_langmuir * (Pb[i].pressure + refer_pressure), 2) + n_max_ad * K_langmuir * Pb[i].compre * 8.314 * Temperature * Rho_ad) / (Pb[i].compre * 8.314 * Temperature * Rho_ad * pow((1 + K_langmuir * (Pb[i].pressure + refer_pressure)), 2));
 		}
 		else if (Pb[i].type == 3)
 		{
-			a[num + temp - 1] = 0.016 * (porosity_LP + (1 - porosity_LP) * porosity) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre) + (1 - porosity_LP) * Pb[i].volume / dt * (-2 * n_max_ad * 0.016 * K_langmuir * Pb[i].pressure - n_max_ad * 0.016 * pow(K_langmuir * Pb[i].pressure, 2) + n_max_ad * K_langmuir * Pb[i].compre * 8.314 * Temperature * Rho_ad) / (Pb[i].compre * 8.314 * Temperature * Rho_ad * pow((1 + K_langmuir * Pb[i].pressure), 2));
+			a[num + temp - 1] = 0.016 * (porosity_LP1 + (1 - porosity_LP2) * micro_porosity_LP) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre) + (1 - porosity_LP2) * Pb[i].volume / dt * (-2 * n_max_ad * 0.016 * K_langmuir * (Pb[i].pressure + refer_pressure) - n_max_ad * 0.016 * pow(K_langmuir * (Pb[i].pressure + refer_pressure), 2) + n_max_ad * K_langmuir * Pb[i].compre * 8.314 * Temperature * Rho_ad) / (Pb[i].compre * 8.314 * Temperature * Rho_ad * pow((1 + K_langmuir * (Pb[i].pressure + refer_pressure)), 2));
 		}
 
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
@@ -1442,22 +1232,22 @@ void PNMsolver::PressureMatrix_REV()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
 			}
 			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
 			}
 			else
@@ -1466,13 +1256,13 @@ void PNMsolver::PressureMatrix_REV()
 				{
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
-						a[num - 1] += Tb[j].Conductivity * (-0.016 * Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+						a[num - 1] += Tb[j].Conductivity * (-0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
 					}
 					else
 					{
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
-						a[num - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
 					}
 
 					if (Tb[j].ID_2 < macro_n)
@@ -1490,14 +1280,14 @@ void PNMsolver::PressureMatrix_REV()
 				{
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
-						a[num] += Tb[j].Conductivity * (-0.016 * Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+						a[num] += Tb[j].Conductivity * (-0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
 					}
 					else
 					{
 
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
-						a[num] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
 					}
 					if (Tb[j].ID_2 < macro_n)
 					{
@@ -1520,21 +1310,20 @@ void PNMsolver::PressureMatrix_REV()
 	{
 		if (Pb[i].type == 0)
 		{
-			B[i - inlet] = porosity_LP * (-0.016) * Pb[i].volume * (Pb[i].pressure / Pb[i].compre - Pb[i].pressure_old / Pb[i].compre_old) / (8.314 * Temperature * dt);
+			B[i - inlet] = -0.016 * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * Pb[i].volume * ((Pb[i].pressure + refer_pressure) / Pb[i].compre - (Pb[i].pressure_old + refer_pressure) / Pb[i].compre_old) / (8.314 * Temperature * dt);
 		}
 		else if (Pb[i].type == 1)
 		{
-			B[i - inlet] = (-0.016) * Pb[i].volume * (Pb[i].pressure / Pb[i].compre - Pb[i].pressure_old / Pb[i].compre_old) / (8.314 * Temperature * dt);
+			B[i - inlet] = (-0.016) * Pb[i].volume * ((Pb[i].pressure + refer_pressure) / Pb[i].compre - (Pb[i].pressure_old + refer_pressure) / Pb[i].compre_old) / (8.314 * Temperature * dt);
 		}
 		else if (Pb[i].type == 2)
 		{
-			B[i - para_macro] = -0.016 * (porosity_HP + (1 - porosity_HP) * porosity) * Pb[i].volume * (Pb[i].pressure / Pb[i].compre - Pb[i].pressure_old / Pb[i].compre_old) / (8.314 * Temperature * dt) - (1 - porosity_HP) * Pb[i].volume / dt * ((1 - 0.016 * Pb[i].pressure / (Pb[i].compre * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure)) - (1 - 0.016 * Pb[i].pressure_old / (Pb[i].compre_old * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old)));
+			B[i - para_macro] = -0.016 * (porosity_HP1 + (1 - porosity_HP2) * micro_porosity_HP) * Pb[i].volume * ((Pb[i].pressure + refer_pressure) / Pb[i].compre - (Pb[i].pressure_old + refer_pressure) / Pb[i].compre_old) / (8.314 * Temperature * dt) - (1 - porosity_HP2) * Pb[i].volume / dt * ((1 - 0.016 * (Pb[i].pressure + refer_pressure) / (Pb[i].compre * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure))) - (1 - 0.016 * (Pb[i].pressure_old + refer_pressure) / (Pb[i].compre_old * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure))));
 		}
 		else if (Pb[i].type == 3)
 		{
-			B[i - para_macro] = -0.016 * (porosity_LP + (1 - porosity_LP) * porosity) * Pb[i].volume * (Pb[i].pressure / Pb[i].compre - Pb[i].pressure_old / Pb[i].compre_old) / (8.314 * Temperature * dt) - (1 - porosity_LP) * Pb[i].volume / dt * ((1 - 0.016 * Pb[i].pressure / (Pb[i].compre * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure)) - (1 - 0.016 * Pb[i].pressure_old / (Pb[i].compre_old * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old)));
+			B[i - para_macro] = -0.016 * (porosity_LP1 + (1 - porosity_LP2) * micro_porosity_LP) * Pb[i].volume * ((Pb[i].pressure + refer_pressure) / Pb[i].compre - (Pb[i].pressure_old + refer_pressure) / Pb[i].compre_old) / (8.314 * Temperature * dt) - (1 - porosity_LP2) * Pb[i].volume / dt * ((1 - 0.016 * (Pb[i].pressure + refer_pressure) / (Pb[i].compre * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure))) - (1 - 0.016 * (Pb[i].pressure_old + refer_pressure) / (Pb[i].compre_old * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure))));
 		}
-
 		temp = 0, temp1 = 0;
 		num = ia[i - para_macro];
 		// micropore
@@ -1544,33 +1333,33 @@ void PNMsolver::PressureMatrix_REV()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 			}
 			else if (Tb[j].ID_2 >= pn - m_outlet)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 			}
 			else
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 
 				if (Tb[j].ID_1 > Tb[j].ID_2)
@@ -1586,7 +1375,7 @@ void PNMsolver::PressureMatrix_REV()
 		ja[num + temp - 1] = i - para_macro + 1; // 第i行对角线的值的位置
 		if (Pb[i].type == 0)
 		{
-			a[num + temp - 1] = 0.016 * Pb[i].volume * porosity_LP / (8.314 * Temperature * dt * Pb[i].compre); // 主对角线的初始值
+			a[num + temp - 1] = 0.016 * (porosity_clay1 + (1 - porosity_clay2) * micro_porosity_Clay) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre); // 主对角线的初始值
 		}
 		else if (Pb[i].type == 1)
 		{
@@ -1594,11 +1383,11 @@ void PNMsolver::PressureMatrix_REV()
 		}
 		else if (Pb[i].type == 2)
 		{
-			a[num + temp - 1] = 0.016 * (porosity_HP + (1 - porosity_HP) * porosity) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre) + (1 - porosity_HP) * Pb[i].volume / dt * (-2 * n_max_ad * 0.016 * K_langmuir * Pb[i].pressure - n_max_ad * 0.016 * pow(K_langmuir * Pb[i].pressure, 2) + n_max_ad * K_langmuir * Pb[i].compre * 8.314 * Temperature * Rho_ad) / (Pb[i].compre * 8.314 * Temperature * Rho_ad * pow((1 + K_langmuir * Pb[i].pressure), 2));
+			a[num + temp - 1] = 0.016 * (porosity_HP1 + (1 - porosity_HP2) * micro_porosity_HP) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre) + (1 - porosity_HP2) * Pb[i].volume / dt * (-2 * n_max_ad * 0.016 * K_langmuir * (Pb[i].pressure + refer_pressure) - n_max_ad * 0.016 * pow(K_langmuir * (Pb[i].pressure + refer_pressure), 2) + n_max_ad * K_langmuir * Pb[i].compre * 8.314 * Temperature * Rho_ad) / (Pb[i].compre * 8.314 * Temperature * Rho_ad * pow((1 + K_langmuir * (Pb[i].pressure + refer_pressure)), 2));
 		}
 		else if (Pb[i].type == 3)
 		{
-			a[num + temp - 1] = 0.016 * (porosity_LP + (1 - porosity_LP) * porosity) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre) + (1 - porosity_LP) * Pb[i].volume / dt * (-2 * n_max_ad * 0.016 * K_langmuir * Pb[i].pressure - n_max_ad * 0.016 * pow(K_langmuir * Pb[i].pressure, 2) + n_max_ad * K_langmuir * Pb[i].compre * 8.314 * Temperature * Rho_ad) / (Pb[i].compre * 8.314 * Temperature * Rho_ad * pow((1 + K_langmuir * Pb[i].pressure), 2));
+			a[num + temp - 1] = 0.016 * (porosity_LP1 + (1 - porosity_LP2) * micro_porosity_LP) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre) + (1 - porosity_LP2) * Pb[i].volume / dt * (-2 * n_max_ad * 0.016 * K_langmuir * (Pb[i].pressure + refer_pressure) - n_max_ad * 0.016 * pow(K_langmuir * (Pb[i].pressure + refer_pressure), 2) + n_max_ad * K_langmuir * Pb[i].compre * 8.314 * Temperature * Rho_ad) / (Pb[i].compre * 8.314 * Temperature * Rho_ad * pow((1 + K_langmuir * (Pb[i].pressure + refer_pressure)), 2));
 		}
 
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++) // 主对角线的初始值
@@ -1607,22 +1396,22 @@ void PNMsolver::PressureMatrix_REV()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
 			}
 			else if (Tb[j].ID_2 >= pn - m_outlet)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
 			}
 			else
@@ -1631,13 +1420,13 @@ void PNMsolver::PressureMatrix_REV()
 				{
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
-						a[num - 1] += Tb[j].Conductivity * (-0.016 * Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+						a[num - 1] += Tb[j].Conductivity * (-0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
 					}
 					else
 					{
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
-						a[num - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
 					}
 
 					if (Tb[j].ID_2 < macro_n)
@@ -1655,13 +1444,13 @@ void PNMsolver::PressureMatrix_REV()
 				{
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
-						a[num] += Tb[j].Conductivity * (-0.016 * Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+						a[num] += Tb[j].Conductivity * (-0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
 					}
 					else
 					{
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
-						a[num] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
 					}
 
 					if (Tb[j].ID_2 < macro_n)
@@ -1694,6 +1483,7 @@ void PNMsolver::PressureMatrix_REV()
 
 void PNMsolver::Eigen_solver_per(double i)
 {
+	refer_pressure = 0;
 	auto start1 = high_resolution_clock::now();
 	double macro{0}, micro_advec{0}, micro_diff{0};
 
@@ -1701,8 +1491,9 @@ void PNMsolver::Eigen_solver_per(double i)
 	int inter_n{0};												   // The interation of outer loop of Newton-raphoon method
 	double total_flow = 0;										   // accumulation production
 	ofstream outfile("Intrinsic_Permeability_Eigen_BiCGSTAB.txt"); // output permeability;
+
 	Flag_eigen = true;
-	Function_DS(inlet_pre);
+	Flag_intri_per = true;
 	memory();
 	Paramentinput();
 	initial_condition();
@@ -1719,313 +1510,24 @@ void PNMsolver::Eigen_solver_per(double i)
 	auto stop2 = high_resolution_clock::now();
 	auto duration2 = duration_cast<milliseconds>(stop2 - start1);
 
-	outfile << (macro + micro_advec) * gas_vis * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) << "\t"
-			<< inlet_pre << "\t"
-			<< duration2.count() / 1000 << "s"
-			<< endl;
+	outfile << "permeability = " << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << " nD" << "\t"
+			<< "pressure = " << inlet_pre + refer_pressure << " Pa" << "\t"
+			<< "solve time = " << duration2.count() / 1000 << "s" << endl;
 	output(1, 1);
 	outfile.close();
 }
 
-void PNMsolver::Matrix()
+// 升序多级排序，此时的判断条件是 < 号
+bool my_compare(vector<double> a, vector<double> b)
 {
-	int num;	  // 每行第一个非0参数的累计编号
-	int num1 = 0; // 矩阵中每行的非0数据数量
-	int temp;	  // 确定对角线前面的数据数量
-	int temp1;
-	int temp2 = 0;
-
-	ia[0] = 1;
-	for (int i = 0; i < NA; i++)
+	if (a[0] != b[0])
+		return a[0] > b[0]; // 第一级比较
+	else
 	{
-		ja[i] = 0;
-		a[i] = 0;
-	}
-
-	for (int i = 0; i < op + mp; i++)
-	{
-		B[i] = 0;
-	}
-
-	/* -------------------------------------------------------------------------------------  */
-	/* 大孔组装 */
-	/* -------------------------------------------------------------------------------------  */
-	for (int i = inlet; i < op + inlet; i++)
-	{
-		B[i - inlet] = 0;
-		temp = 0, temp1 = 0;
-		num = ia[i - inlet];
-		// macropore
-		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
-		{
-			if (Tb[j].ID_2 < inlet) // 进口
-			{
-				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-				{
-					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
-				}
-				else
-				{
-					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
-				}
-			}
-			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n) // 出口
-			{
-				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-				{
-					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
-				}
-				else
-				{
-					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
-				}
-			}
-			else
-			{
-				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-				{
-					B[Tb[j].ID_1 - inlet] += 0;
-				}
-				else
-				{
-					B[Tb[j].ID_1 - inlet] += 0;
-				}
-
-				if (Tb[j].ID_1 > Tb[j].ID_2)
-				{
-					temp++; // 矩阵每行对角线值前面的非0值数量
-				}
-				num1++; // 除对角线值外矩阵每行非0值数量
-			}
-		}
-		num1 += 1; // 加上对角线的非0值
-		/*cout << num1 << "\t" << full_coord[i] << endl;*/
-		ia[i - inlet + 1] = num1 + 1; // 前i行累计的非零值数量，其中1为ia[0]的值
-
-		ja[num + temp - 1] = i - inlet + 1; // 第i行对角线的值的位置
-		a[num + temp - 1] = 0;				// 主对角线的初始值
-
-		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
-		{
-			if (Tb[j].ID_2 < inlet)
-			{
-				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-				{
-					a[ia[i - inlet] + temp - 1] += Tb[j].Conductivity; // 对角线
-				}
-				else
-				{
-					a[ia[i - inlet] + temp - 1] += Tb[j].Conductivity; // 对角线
-				}
-			}
-			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n)
-			{
-				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-				{
-					a[ia[i - inlet] + temp - 1] += Tb[j].Conductivity; // 对角线
-				}
-				else
-				{
-					a[ia[i - inlet] + temp - 1] += Tb[j].Conductivity; // 对角线
-				}
-			}
-			else
-			{
-				if (temp1 < temp) // 下三角
-				{
-					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-					{
-						a[ia[i - inlet] + temp - 1] += Tb[j].Conductivity; // 对角线
-						a[num - 1] += -Tb[j].Conductivity;
-					}
-					else
-					{
-						a[ia[i - inlet] + temp - 1] += Tb[j].Conductivity; // 对角线
-						a[num - 1] += -Tb[j].Conductivity;
-					}
-
-					if (Tb[j].ID_2 < macro_n)
-					{
-						ja[num - 1] = Tb[j].ID_2 - inlet + 1; // 下三角值的列位置
-					}
-					else
-					{
-						ja[num - 1] = Tb[j].ID_2 - para_macro + 1; // 下三角值的列位置
-					}
-					num++;
-					temp1++;
-				}
-				else // 上三角
-				{
-					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-					{
-						a[ia[i - inlet] + temp - 1] += Tb[j].Conductivity; // 对角线
-						a[num] += -Tb[j].Conductivity;
-					}
-					else
-					{
-
-						a[ia[i - inlet] + temp - 1] += Tb[j].Conductivity; // 对角线
-						a[num] += -Tb[j].Conductivity;
-					}
-					if (Tb[j].ID_2 < macro_n)
-					{
-						ja[num] = Tb[j].ID_2 - inlet + 1; // 下三角值的列位置
-					}
-					else
-					{
-						ja[num] = Tb[j].ID_2 - para_macro + 1; // 下三角值的列位置
-					}
-					num++;
-				}
-			}
-		}
-	}
-
-	/* -------------------------------------------------------------------------------------  */
-	/* 微孔组装 */
-	/* -------------------------------------------------------------------------------------  */
-	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
-	{
-		B[i - para_macro] = 0;
-
-		temp = 0, temp1 = 0;
-		num = ia[i - para_macro];
-		// micropore
-		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
-		{
-			if (Tb[j].ID_2 >= macro_n && Tb[j].ID_2 < macro_n + m_inlet) // 微孔进出口边界
-			{
-				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-				{
-					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
-				}
-				else
-				{
-					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
-				}
-			}
-			else if (Tb[j].ID_2 >= pn - m_outlet)
-			{
-				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-				{
-					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
-				}
-				else
-				{
-					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
-				}
-			}
-			else
-			{
-				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-				{
-					B[Tb[j].ID_1 - para_macro] += 0;
-				}
-				else
-				{
-					B[Tb[j].ID_1 - para_macro] += 0;
-				}
-				if (Tb[j].ID_1 > Tb[j].ID_2)
-				{
-					temp++; // 矩阵每行对角线值前面的非0值数量
-				}
-				num1++; // 除对角线值外矩阵每行非0值数量
-			}
-		}
-		num1 += 1; // 加上对角线的非0值
-		/*cout << num1 << "\t" << full_coord[i] << endl;*/
-		ia[i - para_macro + 1] = num1 + 1;		 // 前i行累计的非零值数量，其中1为ia[0]的值
-		ja[num + temp - 1] = i - para_macro + 1; // 第i行对角线的值的位置
-		a[num + temp - 1] = 0;
-		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++) // 主对角线的初始值
-		{
-			if (Tb[j].ID_2 >= macro_n && Tb[j].ID_2 < macro_n + m_inlet)
-			{
-				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-				{
-					a[ia[i - para_macro] + temp - 1] += Tb[j].Conductivity; // 对角线
-				}
-				else
-				{
-					a[ia[i - para_macro] + temp - 1] += Tb[j].Conductivity; // 对角线
-				}
-			}
-			else if (Tb[j].ID_2 >= pn - m_outlet)
-			{
-				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-				{
-					a[ia[i - para_macro] + temp - 1] += Tb[j].Conductivity; // 对角线
-				}
-				else
-				{
-					a[ia[i - para_macro] + temp - 1] += Tb[j].Conductivity; // 对角线
-				}
-			}
-			else
-			{
-				if (temp1 < temp) // 下三角
-				{
-					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-					{
-						a[ia[i - para_macro] + temp - 1] += Tb[j].Conductivity; // 对角线
-						a[num - 1] += -Tb[j].Conductivity;
-					}
-					else
-					{
-						a[ia[i - para_macro] + temp - 1] += Tb[j].Conductivity; // 对角线
-						a[num - 1] += -Tb[j].Conductivity;
-					}
-
-					if (Tb[j].ID_2 < macro_n)
-					{
-						ja[num - 1] = Tb[j].ID_2 - inlet + 1; // 下三角值的列位置
-					}
-					else
-					{
-						ja[num - 1] = Tb[j].ID_2 - para_macro + 1; // 下三角值的列位置
-					}
-					num++;
-					temp1++;
-				}
-				else // 上三角
-				{
-					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
-					{
-						a[ia[i - para_macro] + temp - 1] += Tb[j].Conductivity; // 对角线
-						a[num] += -Tb[j].Conductivity;
-					}
-					else
-					{
-						a[ia[i - para_macro] + temp - 1] += Tb[j].Conductivity; // 对角线
-						a[num] += -Tb[j].Conductivity;
-					}
-
-					if (Tb[j].ID_2 < macro_n)
-					{
-						ja[num] = Tb[j].ID_2 - inlet + 1; // 下三角值的列位置
-					}
-					else
-					{
-						ja[num] = Tb[j].ID_2 - para_macro + 1; // 下三角值的列位置
-					}
-					num++;
-				}
-			}
-		}
-	}
-
-	if (Flag_eigen == false)
-	{
-		for (size_t i = 0; i < op + mp + 1; i++)
-		{
-			ia[i] += -1;
-		}
-
-		for (size_t i = 0; i < ia[op + mp]; i++)
-		{
-			ja[i] += -1;
-		}
+		if (a[1] != b[1])
+			return a[1] > b[1]; // 如果第一级相同，比较第二级
+		else
+			return a[2] > b[2]; // 如果第二级仍相同，比较第三级
 	}
 }
 
@@ -2114,10 +1616,8 @@ double PNMsolver::visco(double p, double z, double T)
 
 void PNMsolver::memory()
 {
-	auto start1 = high_resolution_clock::now();
 	std::vector<std::string> fileList = getFilesInFolder(folderPath);
 	bool flag{false};
-
 	for (const auto &file : fileList)
 	{
 		if (file.find(string("voxels_number")) != string::npos)
@@ -2222,45 +1722,40 @@ void PNMsolver::memory()
 	Pb = new pore[pn];
 	Tb_in = new throat[2 * tn];
 	Tb = new throatmerge[2 * tn];
-
-#pragma omp parallel num_threads(omp_get_num_procs())
-	{
-		#pragma omp for
-		for (int i = 0; i < op + mp; i++)
-		{
-			B[i] = 0;
-		}
-	}
-	auto stop2 = high_resolution_clock::now();
-	auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-
-	cout << "memory done " << duration2.count() / 1000 << " s" << endl;
 }
 
 void PNMsolver::initial_condition()
 {
-	auto start1 = high_resolution_clock::now();
-
+#ifdef _OPENMP
+	double start = omp_get_wtime();
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
 	for (int i = 0; i < pn; i++)
 	{
 		Pb[i].pressure = inlet_pre; //- double(double(i) / double(pn) * 100)
 		Pb[i].pressure_old = Pb[i].pressure;
 	}
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
 	for (int i = macro_n - outlet; i < macro_n; i++)
 	{
 		Pb[i].pressure = outlet_pre;
 		Pb[i].pressure_old = outlet_pre;
 	}
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
 	for (int i = pn - m_outlet; i < pn; i++)
 	{
 		Pb[i].pressure = outlet_pre;
 		Pb[i].pressure_old = outlet_pre;
 	}
-
-	auto stop2 = high_resolution_clock::now();
-	auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-
-	cout << "initial done " << duration2.count() / 1000 << " s" << endl;
+#ifdef _OPENMP
+	double end = omp_get_wtime();
+	printf("initial_condition diff = %.16g\n",
+		   end - start);
+#endif
 };
 
 void PNMsolver::initial_condition(int flag)
@@ -2278,6 +1773,7 @@ void PNMsolver::initial_condition(int flag)
 			break;
 		}
 	}
+
 	for (int i = 0; i < pn; i++)
 	{
 		file >> Pb[i].pressure;
@@ -2289,8 +1785,6 @@ void PNMsolver::initial_condition(int flag)
 
 void PNMsolver::Paramentinput()
 {
-	auto start1 = high_resolution_clock::now();
-
 	cout << "亚分辨区域均质" << endl;
 	std::vector<std::string> fileList = getFilesInFolder(folderPath);
 	bool flag{false};
@@ -2303,13 +1797,25 @@ void PNMsolver::Paramentinput()
 			{
 				flag = true;
 			}
-			for (int i = 0; i < pn; i++)
+
+			if (Flag_Hybrid == true)
 			{
-				double waste{0};
-				porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum;
-				Pb[i].km = ko;
-				// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum;
+				for (int i = 0; i < pn; i++)
+				{
+					double waste{0};
+					porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].radius_micro >> Pb[i].porosity >> Pb[i].km;
+					Pb[i].km = ko;
+				}
 			}
+			else
+			{
+				for (int i = 0; i < pn; i++)
+				{
+					double waste{0};
+					porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
+				}
+			}
+
 			porefile.close();
 		}
 	}
@@ -2330,10 +1836,19 @@ void PNMsolver::Paramentinput()
 				flag = true;
 			}
 
-			for (int i = 0; i < 2 * tn; i++)
+			if (Flag_Hybrid == true)
 			{
-				// throatfile >> Tb_in[i].ID_1 >> Tb_in[i].ID_2 >> Tb_in[i].Radiu >> Tb_in[i].Length;
-				throatfile >> Tb_in[i].ID_1 >> Tb_in[i].ID_2 >> Tb_in[i].Radiu >> Tb_in[i].center_x >> Tb_in[i].center_y >> Tb_in[i].center_z >> Tb_in[i].n_direction >> Tb_in[i].Length;
+				for (int i = 0; i < 2 * tn; i++)
+				{
+					throatfile >> Tb_in[i].ID_1 >> Tb_in[i].ID_2 >> Tb_in[i].Radiu >> Tb_in[i].center_x >> Tb_in[i].center_y >> Tb_in[i].center_z >> Tb_in[i].n_direction >> Tb_in[i].Length;
+				}
+			}
+			else
+			{
+				for (int i = 0; i < 2 * tn; i++)
+				{
+					throatfile >> Tb_in[i].ID_1 >> Tb_in[i].ID_2 >> Tb_in[i].Radiu >> Tb_in[i].Length;
+				}
 			}
 			throatfile.close();
 		}
@@ -2367,10 +1882,6 @@ void PNMsolver::Paramentinput()
 		Tb_in[i].center_y = voxel_size * Tb_in[i].center_y;
 		Tb_in[i].center_z = voxel_size * Tb_in[i].center_z;
 	}
-	auto stop2 = high_resolution_clock::now();
-	auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-
-	cout << "Paramentinput done " << duration2.count() / 1000 << " s" << endl;
 }
 
 void PNMsolver::Paramentinput(int i) // 非均质微孔区域
@@ -2473,28 +1984,28 @@ void PNMsolver::para_cal()
 	for (int i = 0; i < pn; i++)
 	{
 		// Pb[i].compre = 0.702 * pow(M_E, -2.5 * Tr) * pow(Pr, 2) - 5.524 * pow(M_E, -2.5 * Tr) * Pr + 0.044 * pow(Tr, 2) - 0.164 * Tr + 1.15;
-		Pb[i].compre = compre(Pb[i].pressure);
+		Pb[i].compre = compre(Pb[i].pressure + refer_pressure);
 		Pb[i].compre_old = Pb[i].compre;
-		Pb[i].visco = visco(Pb[i].pressure, Pb[i].compre, Temperature);
+		Pb[i].visco = visco(Pb[i].pressure + refer_pressure, Pb[i].compre, Temperature);
 		Pb[i].visco_old = Pb[i].visco;
 	}
 
 	// Total gas content
 	for (int i = inlet; i < macro_n - outlet; i++)
 	{
-		double compre_1 = compre(inlet_pre);
-		double compre_2 = compre(outlet_pre);
-		total_macro += inlet_pre * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
+		double compre_1 = compre(inlet_pre + refer_pressure);
+		double compre_2 = compre(outlet_pre + refer_pressure);
+		total_macro += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
 	}
 	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 	{
-		double compre_1 = compre(inlet_pre);
-		double compre_2 = compre(outlet_pre);
+		double compre_1 = compre(inlet_pre + refer_pressure);
+		double compre_2 = compre(outlet_pre + refer_pressure);
 
-		double n_ad1 = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-		double n_ad2 = n_max_ad * (K_langmuir * outlet_pre / (1 + K_langmuir * outlet_pre));
+		double n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+		double n_ad2 = n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) / (1 + K_langmuir * (outlet_pre + refer_pressure)));
 
-		total_micro_free += inlet_pre * (porosity - n_ad1 / Rho_ad) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * (porosity - n_ad2 / Rho_ad) * 16 / (compre_2 * 8.314 * Temperature);
+		total_micro_free += (inlet_pre + refer_pressure) * (porosity - n_ad1 / Rho_ad) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * (porosity - n_ad2 / Rho_ad) * 16 / (compre_2 * 8.314 * Temperature);
 		total_micro_ad += Pb[i].volume * (n_ad1 - n_ad2) * 1000;
 	}
 	total_p = total_macro + total_micro_free + total_micro_ad;
@@ -2510,7 +2021,7 @@ void PNMsolver::para_cal()
 	{
 		// 计算克努森数
 		double Knusen_number{0};
-		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure) / 2;
+		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
 		double Average_compre = (Pb[Tb_in[i].ID_1].compre + Pb[Tb_in[i].ID_2].compre) / 2;
 		double Average_visco = (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2;
 		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
@@ -2665,191 +2176,13 @@ void PNMsolver::para_cal()
 	}
 }
 
-void PNMsolver::para_cal_in_newton()
-{
-	// 计算压缩系数
-	for (int i = 0; i < pn; i++)
-	{
-		Pb[i].compre = compre(Pb[i].pressure);
-		Pb[i].visco = visco(Pb[i].pressure, Pb[i].compre, Temperature);
-	}
-
-	// 水力传导系数计算
-	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
-
-	for (int i = 0; i < 2 * tn; i++)
-	{
-		// 计算克努森数
-		double Knusen_number{0};
-		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure) / 2;
-		double Average_compre = (Pb[Tb_in[i].ID_1].compre + Pb[Tb_in[i].ID_2].compre) / 2;
-		double Average_visco = (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2;
-		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
-		{
-			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Tb_in[i].Radiu * 2);
-		}
-		else
-		{
-			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (micro_radius * 2);
-		}
-		// 计算滑移项
-		double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
-		double beta = 4;
-		double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
-		Tb_in[i].Knusen = Knusen_number;
-		Tb_in[i].Slip = Slip;
-		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
-		{
-			if (Tb_in[i].Length <= 0) // 剔除可能存在的负喉道长度
-			{
-				Tb_in[i].Length = 0.5 * voxel_size;
-			}
-			Tb_in[i].Conductivity = Slip * pi * pow(Tb_in[i].Radiu, 4) / (8 * Average_visco * Tb_in[i].Length);
-			Tb_in[i].Surface_diff_conduc = 0;
-		}
-		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
-		{
-			temp1 = Slip * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 3) / (8 * Average_visco);
-			length2 = sqrt(pow(Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z, 2));
-			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
-			{
-				angle2 = (Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x) / length2;
-			}
-			else if (Tb_in[i].n_direction == 2 || Tb_in[i].n_direction == 3)
-			{
-				angle2 = (Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y) / length2;
-			}
-			else if (Tb_in[i].n_direction == 4 || Tb_in[i].n_direction == 5)
-			{
-				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
-			}
-			temp2 = abs(Slip * Pb[Tb_in[i].ID_2].km * Tb_in[i].Radiu * angle2 / (Average_visco * length2));
-			temp11 = abs(pi * Pb[Tb_in[i].ID_1].Radiu * Ds * n_max_ad);
-			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
-
-			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
-			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
-		}
-		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
-		{
-			temp2 = Slip * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 3) / (8 * Average_visco);
-			length1 = sqrt(pow(Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z, 2));
-			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
-			{
-				angle1 = (Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x) / length1;
-			}
-			else if (Tb_in[i].n_direction == 2 || Tb_in[i].n_direction == 3)
-			{
-				angle1 = (Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y) / length1;
-			}
-			else if (Tb_in[i].n_direction == 4 || Tb_in[i].n_direction == 5)
-			{
-				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
-			}
-			temp1 = abs(Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
-
-			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
-			temp22 = abs(pi * Pb[Tb_in[i].ID_2].Radiu * Ds * n_max_ad);
-			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
-			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
-		}
-		else if (Tb_in[i].ID_1 < macro_n + m_inlet || Tb_in[i].ID_1 >= pn - m_outlet || Tb_in[i].ID_2 < macro_n + m_inlet || Tb_in[i].ID_2 >= pn - m_outlet)
-		{
-			Tb_in[i].Conductivity = Slip * ko * Tb_in[i].Radiu / (Average_visco * Tb_in[i].Length);
-			Tb_in[i].Surface_diff_conduc = Tb_in[i].Radiu * Ds * n_max_ad / Tb_in[i].Length;
-		}
-		else
-		{
-			length1 = sqrt(pow(Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z, 2));
-			length2 = sqrt(pow(Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z, 2));
-			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
-			{
-				angle1 = (Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x) / length1;
-				angle2 = (Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x) / length2;
-			}
-			else if (Tb_in[i].n_direction == 2 || Tb_in[i].n_direction == 3)
-			{
-				angle1 = (Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y) / length1;
-				angle2 = (Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y) / length2;
-			}
-			else if (Tb_in[i].n_direction == 4 || Tb_in[i].n_direction == 5)
-			{
-				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
-				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
-			}
-			temp1 = abs(Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
-			temp2 = abs(Slip * Pb[Tb_in[i].ID_2].km * Tb_in[i].Radiu * angle2 / (Average_visco * length2));
-			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
-			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
-			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
-			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
-		}
-	}
-
-	// merge throat
-	int label = 0;
-	Tb[0].ID_1 = Tb_in[0].ID_1;
-	Tb[0].ID_2 = Tb_in[0].ID_2;
-	Tb[0].Radiu = Tb_in[0].Radiu;
-	Tb[0].Conductivity = Tb_in[0].Conductivity;
-	Tb[0].Surface_diff_conduc = Tb_in[0].Surface_diff_conduc;
-	Tb[0].Knusen = Tb_in[0].Knusen;
-	Tb[0].Slip = Tb_in[0].Slip;
-	for (int i = 1; i < 2 * tn; i++)
-	{
-		if (Tb[label].ID_1 == Tb_in[i].ID_1 && Tb[label].ID_2 == Tb_in[i].ID_2)
-		{
-			Tb[label].Conductivity += Tb_in[i].Conductivity;
-		}
-		else
-		{
-			label++;
-			Tb[label].ID_1 = Tb_in[i].ID_1;
-			Tb[label].ID_2 = Tb_in[i].ID_2;
-			Tb[label].Radiu = Tb_in[i].Radiu;
-			Tb[label].Conductivity = Tb_in[i].Conductivity;
-			Tb[label].Surface_diff_conduc = Tb_in[i].Surface_diff_conduc;
-			Tb[label].Knusen = Tb_in[i].Knusen;
-			Tb[label].Slip = Tb_in[i].Slip;
-		}
-	}
-	// full_coord
-	for (int i = 0; i < pn; i++)
-	{
-		Pb[i].full_coord = 0;
-		Pb[i].full_accum = 0;
-	}
-
-	for (int i = 0; i <= label; i++)
-	{
-		Pb[Tb[i].ID_1].full_coord += 1;
-	}
-
-	// full_accum
-	Pb[0].full_accum = Pb[0].full_coord;
-	for (int i = 1; i < pn; i++)
-	{
-		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
-	}
-
-	// 参数输出验证
-	/*for (int i = 0;i < pn;i++)
-	{
-		cout << "volume[" << i << "]=" << Pb[i].volume << endl;
-	}*/
-
-	/*for (int i = 738117;i < tn;i++)
-	{
-		cout << "ChannelLength[" << i << "]=" << Tb[i].Length << "\t" << "cond[" << i << "]=" << Tb[i].Conductivity << endl;
-	}*/
-}
-
 void PNMsolver::para_cal(double mode)
 {
-
-	auto start1 = high_resolution_clock::now();
-
 	// 计算孔隙的体积
+#ifdef _OPENMP
+	double start = omp_get_wtime();
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
 	for (int i = 0; i < pn; i++)
 	{
 		if (Pb[i].type == 0)
@@ -2867,51 +2200,64 @@ void PNMsolver::para_cal(double mode)
 	}
 
 	// 计算压缩系数 气体粘度
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
 	for (int i = 0; i < pn; i++)
 	{
 		// Pb[i].compre = 0.702 * pow(M_E, -2.5 * Tr) * pow(Pr, 2) - 5.524 * pow(M_E, -2.5 * Tr) * Pr + 0.044 * pow(Tr, 2) - 0.164 * Tr + 1.15;
-		Pb[i].compre = compre(Pb[i].pressure);
+		Pb[i].compre = compre(Pb[i].pressure + refer_pressure);
 		Pb[i].compre_old = Pb[i].compre;
-		Pb[i].visco = visco(Pb[i].pressure, Pb[i].compre, Temperature);
+		Pb[i].visco = visco(Pb[i].pressure + refer_pressure, Pb[i].compre, Temperature);
 		Pb[i].visco_old = Pb[i].visco;
 	}
 
 	// Total gas content
-	// for (int i = inlet; i < macro_n - outlet; i++)
-	// {
-	// 	double compre_1 = compre(inlet_pre);
-	// 	double compre_2 = compre(outlet_pre);
-	// 	total_macro += inlet_pre * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
-	// }
-	// for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
-	// {
-	// 	double compre_1 = compre(inlet_pre);
-	// 	double compre_2 = compre(outlet_pre);
+	double compre_1 = compre(inlet_pre + refer_pressure);
+	double compre_2 = compre(outlet_pre + refer_pressure);
+	double n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+	double n_ad2 = n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) / (1 + K_langmuir * (outlet_pre + refer_pressure)));
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA)) reduction(+ : total_macro)
+#endif
+	for (int i = inlet; i < macro_n - outlet; i++)
+	{
+		total_macro += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
+	}
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA)) reduction(+ : total_micro_free, total_micro_ad)
+#endif
+	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
+	{
+		total_micro_free += (inlet_pre + refer_pressure) * (porosity - n_ad1 / Rho_ad) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * (porosity - n_ad2 / Rho_ad) * 16 / (compre_2 * 8.314 * Temperature);
+		total_micro_ad += Pb[i].volume * (n_ad1 - n_ad2) * 1000;
+	}
 
-	// 	double n_ad1 = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-	// 	double n_ad2 = n_max_ad * (K_langmuir * outlet_pre / (1 + K_langmuir * outlet_pre));
-
-	// 	total_micro_free += inlet_pre * (porosity - n_ad1 / Rho_ad) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * (porosity - n_ad2 / Rho_ad) * 16 / (compre_2 * 8.314 * Temperature);
-	// 	total_micro_ad += Pb[i].volume * (n_ad1 - n_ad2) * 1000;
-	// }
-	// total_p = total_macro + total_micro_free + total_micro_ad;
-	// cout << "total_macro = " << total_macro << endl;
-	// cout << "total_micro_free = " << total_micro_free << endl;
-	// cout << "total_micro_ad = " << total_micro_ad << endl;
-	// cout << "total_p = " << total_p << endl;
+	total_p = total_macro + total_micro_free + total_micro_ad;
+	cout << "total_macro = " << total_macro << endl;
+	cout << "total_micro_free = " << total_micro_free << endl;
+	cout << "total_micro_ad = " << total_micro_ad << endl;
+	cout << "total_p = " << total_p << endl;
 
 	// 水力传导系数计算
 	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
-
+																										   // 计算克努森数
+	double Knusen_number{0};
+	double Average_pressure{0};
+	double Average_compre{0};
+	double Average_visco{0};
+	double Slip{0};
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA)) private(Knusen_number, Average_pressure, Average_compre, Average_visco, Slip, \
+																temp1, temp2, temp11, temp22, angle1, angle2, length1, length2)
+#endif
 	for (int i = 0; i < 2 * tn; i++)
 	{
-		// 计算克努森数
-		double Knusen_number{0};
-		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure) / 2;
-		double Average_compre = (Pb[Tb_in[i].ID_1].compre + Pb[Tb_in[i].ID_2].compre) / 2;
-		double Average_visco = (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2;
-
-		double Slip = 1;
+		Knusen_number = 0;
+		Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
+		Average_compre = (Pb[Tb_in[i].ID_1].compre + Pb[Tb_in[i].ID_2].compre) / 2;
+		Average_visco = (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2;
+		Slip = 1;
 		Tb_in[i].Knusen = Knusen_number;
 		Tb_in[i].Slip = 1;
 		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
@@ -3002,7 +2348,6 @@ void PNMsolver::para_cal(double mode)
 			// cout << temp1 << "\t" << temp2 <<"\t"<< Tb_in[i].Conductivity << endl;
 		}
 	}
-
 	// merge throat
 	int label = 0;
 	Tb[0].ID_1 = Tb_in[0].ID_1;
@@ -3030,35 +2375,34 @@ void PNMsolver::para_cal(double mode)
 			Tb[label].Slip = Tb_in[i].Slip;
 		}
 	}
-	// full_coord
+
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
 	for (int i = 0; i < pn; i++)
 	{
 		Pb[i].full_coord = 0;
 		Pb[i].full_accum = 0;
 	}
-
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
 	for (int i = 0; i <= label; i++)
 	{
 		Pb[Tb[i].ID_1].full_coord += 1;
 	}
 
-	// full_accum
 	Pb[0].full_accum = Pb[0].full_coord;
+
 	for (int i = 1; i < pn; i++)
 	{
 		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
 	}
-
-	auto stop2 = high_resolution_clock::now();
-	auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-
-	cout << "para_cal done " << duration2.count() / 1000 << " s" << endl;
-	// ofstream outfile("conductivity1.txt");
-	// for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
-	// {
-	// 	outfile << Tb_in[i].ID_1 << "-" << Tb_in[i].ID_2 << "-" << Tb_in[i].Conductivity << "    " << Tb[i].ID_1 << "-" << Tb[i].ID_2 << "-" << Tb[i].Conductivity << endl;
-	// }
-	// outfile.close();
+#ifdef _OPENMP
+	double end = omp_get_wtime();
+	printf("para_cal diff = %.16g\n",
+		   end - start);
+#endif
 }
 
 void PNMsolver::para_cal_in_newton(double mode)
@@ -3066,18 +2410,17 @@ void PNMsolver::para_cal_in_newton(double mode)
 	// 计算压缩系数
 	for (int i = 0; i < pn; i++)
 	{
-		Pb[i].compre = compre(Pb[i].pressure);
-		Pb[i].visco = visco(Pb[i].pressure, Pb[i].compre, Temperature);
+		Pb[i].compre = compre(Pb[i].pressure + refer_pressure);
+		Pb[i].visco = visco(Pb[i].pressure + refer_pressure, Pb[i].compre, Temperature);
 	}
 
 	// 水力传导系数计算
 	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
-
 	for (int i = 0; i < 2 * tn; i++)
 	{
 		// 计算克努森数
 		double Knusen_number{0};
-		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure) / 2;
+		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
 		double Average_compre = (Pb[Tb_in[i].ID_1].compre + Pb[Tb_in[i].ID_2].compre) / 2;
 		double Average_visco = (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2;
 
@@ -3199,34 +2542,29 @@ void PNMsolver::para_cal_in_newton(double mode)
 			Tb[label].Slip = Tb_in[i].Slip;
 		}
 	}
-	// full_coord
-	for (int i = 0; i < pn; i++)
-	{
-		Pb[i].full_coord = 0;
-		Pb[i].full_accum = 0;
-	}
+	// // full_coord
+	// #pragma omp parallel for num_threads(int(omp_get_max_threads() * 0.8))
+	// 	for (int i = 0; i < pn; i++)
+	// 	{
+	// 		Pb[i].full_coord = 0;
+	// 		Pb[i].full_accum = 0;
+	// 	}
+	// #pragma omp parallel for num_threads(int(omp_get_max_threads() * 0.8))
+	// 	for (int i = 0; i <= label; i++)
+	// 	{
+	// 		Pb[Tb[i].ID_1].full_coord += 1;
+	// 	}
 
-	for (int i = 0; i <= label; i++)
-	{
-		Pb[Tb[i].ID_1].full_coord += 1;
-	}
-
-	// full_accum
-	Pb[0].full_accum = Pb[0].full_coord;
-	for (int i = 1; i < pn; i++)
-	{
-		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
-	}
-
-	ofstream outfile("conductivity2.txt");
-	for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
-	{
-		outfile << Tb_in[i].ID_1 << "-" << Tb_in[i].ID_2 << "-" << Tb_in[i].Conductivity << "    " << Tb[i].ID_1 << "-" << Tb[i].ID_2 << "-" << Tb[i].Conductivity << endl;
-	}
-	outfile.close();
+	// // full_accum
+	// 	Pb[0].full_accum = Pb[0].full_coord;
+	// #pragma omp parallel for num_threads(int(omp_get_max_threads() * 0.8))
+	// 	for (int i = 1; i < pn; i++)
+	// 	{
+	// 		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
+	// 	}
 }
 
-void PNMsolver::PressureMatrix()
+void PNMsolver::Matrix_gas_pro()
 {
 	int num;	  // 每行第一个非0参数的累计编号
 	int num1 = 0; // 矩阵中每行的非0数据数量
@@ -3251,7 +2589,7 @@ void PNMsolver::PressureMatrix()
 	/* -------------------------------------------------------------------------------------  */
 	for (int i = inlet; i < op + inlet; i++)
 	{
-		B[i - inlet] = -0.016 * Pb[i].volume * (Pb[i].pressure / Pb[i].compre - Pb[i].pressure_old / Pb[i].compre_old) / (8.314 * Temperature * dt);
+		B[i - inlet] = -0.016 * Pb[i].volume * ((Pb[i].pressure + refer_pressure) / Pb[i].compre - (Pb[i].pressure_old + refer_pressure) / Pb[i].compre_old) / (8.314 * Temperature * dt);
 		temp = 0, temp1 = 0;
 		num = ia[i - inlet];
 		// macropore
@@ -3261,33 +2599,33 @@ void PNMsolver::PressureMatrix()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 			}
 			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n) // 出口
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 			}
 			else
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 
 				if (Tb[j].ID_1 > Tb[j].ID_2)
@@ -3310,22 +2648,22 @@ void PNMsolver::PressureMatrix()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
 			}
 			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
 			}
 			else
@@ -3334,13 +2672,13 @@ void PNMsolver::PressureMatrix()
 				{
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
-						a[num - 1] += Tb[j].Conductivity * (-0.016 * Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+						a[num - 1] += Tb[j].Conductivity * (-0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
 					}
 					else
 					{
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
-						a[num - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
 					}
 
 					if (Tb[j].ID_2 < macro_n)
@@ -3358,14 +2696,14 @@ void PNMsolver::PressureMatrix()
 				{
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
-						a[num] += Tb[j].Conductivity * (-0.016 * Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+						a[num] += Tb[j].Conductivity * (-0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
 					}
 					else
 					{
 
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
-						a[num] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
 					}
 					if (Tb[j].ID_2 < macro_n)
 					{
@@ -3386,7 +2724,7 @@ void PNMsolver::PressureMatrix()
 	/* -------------------------------------------------------------------------------------  */
 	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 	{
-		B[i - para_macro] = -0.016 * porosity * Pb[i].volume * (Pb[i].pressure / Pb[i].compre - Pb[i].pressure_old / Pb[i].compre_old) / (8.314 * Temperature * dt) - Pb[i].volume / dt * ((1 - 0.016 * Pb[i].pressure / (Pb[i].compre * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure)) - (1 - 0.016 * Pb[i].pressure_old / (Pb[i].compre_old * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old)));
+		B[i - para_macro] = -0.016 * porosity * Pb[i].volume * ((Pb[i].pressure + refer_pressure) / Pb[i].compre - (Pb[i].pressure_old + refer_pressure) / Pb[i].compre_old) / (8.314 * Temperature * dt) - Pb[i].volume / dt * ((1 - 0.016 * (Pb[i].pressure + refer_pressure) / (Pb[i].compre * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure))) - (1 - 0.016 * (Pb[i].pressure_old + refer_pressure) / (Pb[i].compre_old * 8.314 * Temperature * Rho_ad)) * (n_max_ad * K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure))));
 
 		temp = 0, temp1 = 0;
 		num = ia[i - para_macro];
@@ -3397,37 +2735,37 @@ void PNMsolver::PressureMatrix()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
-				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * Pb[Tb[j].ID_1].pressure / (1 + K_langmuir * Pb[Tb[j].ID_1].pressure) - K_langmuir * Pb[Tb[j].ID_2].pressure / (1 + K_langmuir * Pb[Tb[j].ID_2].pressure));
+				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure)));
 			}
 			else if (Tb[j].ID_2 >= pn - m_outlet)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
-				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * Pb[Tb[j].ID_1].pressure / (1 + K_langmuir * Pb[Tb[j].ID_1].pressure) - K_langmuir * Pb[Tb[j].ID_2].pressure / (1 + K_langmuir * Pb[Tb[j].ID_2].pressure));
+				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure)));
 			}
 			else
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
-				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * Pb[Tb[j].ID_1].pressure / (1 + K_langmuir * Pb[Tb[j].ID_1].pressure) - K_langmuir * Pb[Tb[j].ID_2].pressure / (1 + K_langmuir * Pb[Tb[j].ID_2].pressure));
+				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure)));
 
 				if (Tb[j].ID_1 > Tb[j].ID_2)
 				{
@@ -3440,32 +2778,32 @@ void PNMsolver::PressureMatrix()
 		/*cout << num1 << "\t" << full_coord[i] << endl;*/
 		ia[i - para_macro + 1] = num1 + 1;		 // 前i行累计的非零值数量，其中1为ia[0]的值
 		ja[num + temp - 1] = i - para_macro + 1; // 第i行对角线的值的位置
-		a[num + temp - 1] = 0.016 * porosity * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre) + Pb[i].volume / dt * (-2 * n_max_ad * 0.016 * K_langmuir * Pb[i].pressure - n_max_ad * 0.016 * pow(K_langmuir * Pb[i].pressure, 2) + n_max_ad * K_langmuir * Pb[i].compre * 8.314 * Temperature * Rho_ad) / (Pb[i].compre * 8.314 * Temperature * Rho_ad * pow((1 + K_langmuir * Pb[i].pressure), 2));
+		a[num + temp - 1] = 0.016 * porosity * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre) + Pb[i].volume / dt * (-2 * n_max_ad * 0.016 * K_langmuir * (Pb[i].pressure + refer_pressure) - n_max_ad * 0.016 * pow(K_langmuir * (Pb[i].pressure + refer_pressure), 2) + n_max_ad * K_langmuir * Pb[i].compre * 8.314 * Temperature * Rho_ad) / (Pb[i].compre * 8.314 * Temperature * Rho_ad * pow((1 + K_langmuir * (Pb[i].pressure + refer_pressure)), 2));
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++) // 主对角线的初始值
 		{
 			if (Tb[j].ID_2 >= macro_n && Tb[j].ID_2 < macro_n + m_inlet)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
-				a[ia[i - para_macro] + temp - 1] += Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2);
+				a[ia[i - para_macro] + temp - 1] += Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2);
 			}
 			else if (Tb[j].ID_2 >= pn - m_outlet)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
-				a[ia[i - para_macro] + temp - 1] += Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2);
+				a[ia[i - para_macro] + temp - 1] += Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2);
 			}
 			else
 			{
@@ -3473,13 +2811,13 @@ void PNMsolver::PressureMatrix()
 				{
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2); // 对角线
-						a[num - 1] += 0.016 * Tb[j].Conductivity * (-Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * Pb[Tb[j].ID_2].pressure, 2);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * (-Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
 					}
 					else
 					{
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2); // 对角线
-						a[num - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * Pb[Tb[j].ID_2].pressure, 2);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
 					}
 
 					if (Tb[j].ID_2 < macro_n)
@@ -3498,13 +2836,13 @@ void PNMsolver::PressureMatrix()
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
 
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2); // 对角线
-						a[num] += 0.016 * Tb[j].Conductivity * (-Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * Pb[Tb[j].ID_2].pressure, 2);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * (-(Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
 					}
 					else
 					{
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2); // 对角线
-						a[num] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * Pb[Tb[j].ID_2].pressure, 2);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
 					}
 
 					if (Tb[j].ID_2 < macro_n)
@@ -3532,7 +2870,43 @@ void PNMsolver::PressureMatrix()
 		{
 			ja[i] += -1;
 		}
+
+		// ofstream ia_out("ia_out_amgx.txt");
+		// for (size_t i = 0; i < op + mp + 1; i++)
+		// {
+		// 	ia_out << ia[i] << endl;
+		// }
+
+		// ofstream ja_out("ja_out_amgx.txt");
+		// for (size_t i = 0; i < NA; i++)
+		// {
+		// 	ja_out << ja[i] << endl;
+		// }
+
+		// ofstream a_out("a_out_amgx.txt");
+		// for (size_t i = 0; i < NA; i++)
+		// {
+		// 	a_out << a[i] << endl;
+		// }
 	}
+
+	// ofstream ia_out("ia_out_EIGEN.txt");
+	// for (size_t i = 0; i < op + mp + 1; i++)
+	// {
+	// 	ia_out << ia[i] << endl;
+	// }
+
+	// ofstream ja_out("ja_out_EIGEN.txt");
+	// for (size_t i = 0; i < NA; i++)
+	// {
+	// 	ja_out << ja[i] << endl;
+	// }
+
+	// ofstream a_out("a_out_EIGEN.txt");
+	// for (size_t i = 0; i < NA; i++)
+	// {
+	// 	a_out << a[i] << endl;
+	// }
 }
 
 void PNMsolver::Eigen_subroutine(Eigen::SparseMatrix<double, Eigen::RowMajor> &A0, Eigen::VectorXd &B0)
@@ -3554,9 +2928,10 @@ void PNMsolver::Eigen_subroutine(Eigen::SparseMatrix<double, Eigen::RowMajor> &A
 		/*cout << B0[i] << endl;*/
 	}
 
-	BiCGSTAB<SparseMatrix<double, RowMajor>> solver;
-	solver.setTolerance(pow(10, -5));
-	solver.setMaxIterations(1000);
+	SimplicialLLT<SparseMatrix<double, RowMajor>> solver;
+	// solver.setTolerance(pow(10, -5));
+	// solver.setMaxIterations(1000);
+	/*solver.setMaxIterations(3);*/
 	// 计算分解
 	solver.compute(A0);
 
@@ -3641,29 +3016,34 @@ void PNMsolver::Eigen_subroutine_per(Eigen::SparseMatrix<double, Eigen::RowMajor
 	// 矩阵的二阶范数
 	// norm_inf = x.norm();
 
-	// 更新应力场
-	for (int i = inlet; i < inlet + op; i++)
+	if (Flag_intri_per == true)
 	{
-		Pb[i].pressure += x[i - inlet];
+		// 更新应力场
+		for (int i = inlet; i < inlet + op; i++)
+		{
+			Pb[i].pressure = x[i - inlet];
+		}
+		for (int i = op; i < op + mp; i++)
+		{
+			Pb[i + inlet + outlet + m_inlet].pressure = x[i];
+		}
 	}
-	for (int i = op; i < op + mp; i++)
+	else
 	{
-		Pb[i + inlet + outlet + m_inlet].pressure += x[i];
+		// 更新应力场
+		for (int i = inlet; i < inlet + op; i++)
+		{
+			Pb[i].pressure += x[i - inlet];
+		}
+		for (int i = op; i < op + mp; i++)
+		{
+			Pb[i + inlet + outlet + m_inlet].pressure += x[i];
+		}
 	}
-	////outlet部分孔设置为解吸出口
-	// for (int i = 0; i < inlet; i++)
-	// {
-	// 	Pb[i].pressure += x[Tb[i].ID_2 - inlet];
-	// }
-	// for (int i = macro_n; i < macro_n + m_inlet; i++)
-	// {
-	// 	Pb[i].pressure = Pb[Tb[Pb[i].full_accum - Pb[i].full_coord].ID_2].pressure;
-	// }
+
 	auto stop = high_resolution_clock::now();
 	auto duration = duration_cast<milliseconds>(stop - start);
 	cout << "Eigen subroutine Time-consuming = " << duration.count() / 1000 << "S" << endl;
-	// endTime = clock();
-	// cout<<"solver time:"<<(endTime-startTime)/1000<<endl;
 }
 
 double PNMsolver::Nor_inf(double A[])
@@ -3690,11 +3070,11 @@ double PNMsolver::macro_outlet_flow()
 			double rho{0};
 			if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 			{
-				rho = Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature); // rho mol/m^3
+				rho = (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature); // rho mol/m^3
 			}
 			else
 			{
-				rho = Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature); // rho mol/m^3
+				rho = (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature); // rho mol/m^3
 			}
 			Q_outlet += dt * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * Tb[j].Conductivity * 16 * rho; // 质量流量 g
 		}
@@ -3712,11 +3092,11 @@ double PNMsolver::micro_outlet_free_flow()
 			double rho{0};
 			if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 			{
-				rho = Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature); // rho mol/m^3
+				rho = (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature); // rho mol/m^3
 			}
 			else
 			{
-				rho = Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature); // rho mol/m^3
+				rho = (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature); // rho mol/m^3
 			}
 			Q_outlet += dt * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * Tb[j].Conductivity * 16 * rho; // 质量流量 g
 		}
@@ -3731,7 +3111,7 @@ double PNMsolver::micro_outlet_ad_flow()
 	{
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
 		{
-			Q_outlet += dt * Tb[j].Surface_diff_conduc * (K_langmuir * Pb[Tb[j].ID_1].pressure / (1 + K_langmuir * Pb[Tb[j].ID_1].pressure) - K_langmuir * Pb[Tb[j].ID_2].pressure / (1 + K_langmuir * Pb[Tb[j].ID_2].pressure)) * 1000;
+			Q_outlet += dt * Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure))) * 1000;
 		}
 	}
 	return abs(Q_outlet);
@@ -3746,37 +3126,35 @@ double PNMsolver::macro_outlet_Q()
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
 		{
 			Q_outlet += (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * Tb[j].Conductivity; // 体积流量
-																								  // out_flux << abs(Q_outlet) << ";" << 1 << ";" << i << ";" << Pb[Tb[j].ID_1].pressure << ";" << Pb[Tb[j].ID_2].pressure << ";" << Tb[j].Conductivity << ";" << Pb[Tb[j].ID_1].Radiu << ";" << Pb[Tb[j].ID_2].Radiu << ";" << Tb[j].Radiu << ";" << Tb_in[j].Length << endl;
+																								  // out_flux << Pb[Tb[j].ID_1].pressure << "  " << Pb[Tb[j].ID_2].pressure << "  " << abs(Q_outlet) << "  " << 1 << "  " << i << endl;
 		}
 	}
 	return abs(Q_outlet);
 }; // 出口大孔流量
+
 double PNMsolver::micro_outlet_advec_Q()
 {
-	ofstream out_flux("out_flux.txt", ios::app);
 	double Q_outlet = 0;
 	for (int i = pn - m_outlet; i < pn; i++)
 	{
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
 		{
 			Q_outlet += (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * Tb[j].Conductivity; // 体积流量
-			out_flux << abs(Q_outlet) << ";" << 0 << ";" << i << ";" << Pb[Tb[j].ID_1].pressure << ";" << Pb[Tb[j].ID_2].pressure << ";" << Tb[j].Conductivity << ";" << Pb[Tb[j].ID_1].Radiu << ";" << Pb[Tb[j].ID_2].Radiu << ";" << Tb[j].Radiu << ";" << Tb_in[j].Length << endl;
 		}
 	}
 	return abs(Q_outlet);
 }; // 出口微孔流量
+
 double PNMsolver::micro_outlet_diff_Q()
 {
-	// ofstream out_flux("out_flux.txt",ios::app);
 	double Q_outlet = 0;
 	for (int i = pn - m_outlet; i < pn; i++)
 	{
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
 		{
-			double average_density = (Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) + Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature)) / 2;
-			Q_outlet += Tb[j].Surface_diff_conduc * (K_langmuir * Pb[Tb[j].ID_1].pressure / (1 + K_langmuir * Pb[Tb[j].ID_1].pressure) - K_langmuir * Pb[Tb[j].ID_2].pressure / (1 + K_langmuir * Pb[Tb[j].ID_2].pressure)) / (average_density * 16e-3); // 体积流量
+			double average_density = ((Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) + (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature)) / 2;
+			Q_outlet += Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure))) / (average_density * 16e-3); // 体积流量
 		}
-		// out_flux << abs(Q_outlet) << endl;
 	}
 	return abs(Q_outlet);
 }; // 出口吸附量
@@ -3786,7 +3164,7 @@ double PNMsolver::macro_mass_loss()
 	double macro_mass_loss = 0;
 	for (int i = inlet; i < macro_n - outlet; i++)
 	{
-		macro_mass_loss += Pb[i].pressure_old * Pb[i].volume * 16 / (Pb[i].compre_old * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
+		macro_mass_loss += (Pb[i].pressure_old + refer_pressure) * Pb[i].volume * 16 / (Pb[i].compre_old * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
 	}
 	return (macro_mass_loss);
 }
@@ -3796,10 +3174,10 @@ double PNMsolver::micro_free_mass_loss()
 	double micro_mass_loss = 0;
 	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 	{
-		double n_ad_new = n_max_ad * (K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure));			// kg/m3
-		double n_ad_old = n_max_ad * (K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old)); // kg/m3
+		double n_ad_new = n_max_ad * (K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure)));		  // kg/m3
+		double n_ad_old = n_max_ad * (K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure))); // kg/m3
 
-		micro_mass_loss += (porosity - n_ad_old / Rho_ad) * Pb[i].pressure_old * Pb[i].volume * 16 / (Pb[i].compre_old * 8.314 * Temperature) - (porosity - n_ad_new / Rho_ad) * Pb[i].pressure * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
+		micro_mass_loss += (porosity - n_ad_old / Rho_ad) * (Pb[i].pressure_old + refer_pressure) * Pb[i].volume * 16 / (Pb[i].compre_old * 8.314 * Temperature) - (porosity - n_ad_new / Rho_ad) * (Pb[i].pressure + refer_pressure) * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
 	}
 	return (micro_mass_loss);
 }
@@ -3809,8 +3187,8 @@ double PNMsolver::micro_ad_mass_loss() // - outlet_pre * Pb[i].volume * (porosit
 	double micro_ad_mass_loss = 0;
 	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 	{
-		double n_ad_new = n_max_ad * (K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure));
-		double n_ad_old = n_max_ad * (K_langmuir * Pb[i].pressure_old / (1 + K_langmuir * Pb[i].pressure_old));
+		double n_ad_new = n_max_ad * (K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure)));
+		double n_ad_old = n_max_ad * (K_langmuir * (Pb[i].pressure_old + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure_old + refer_pressure)));
 
 		micro_ad_mass_loss += (n_ad_old - n_ad_new) * 1000 * Pb[i].volume; // 微孔累计产气质量 单位g
 	}
@@ -3914,7 +3292,7 @@ void PNMsolver::output(int n, int m)
 
 	ostringstream name;
 	name << "Permeability";
-	name << to_string(inlet_pre);
+	name << to_string(inlet_pre + refer_pressure);
 	name << ".vtk";
 	ofstream outfile(name.str().c_str());
 	outfile << "# vtk DataFile Version 2.0" << endl;
@@ -3936,27 +3314,27 @@ void PNMsolver::output(int n, int m)
 	// 输出孔体信息
 	outfile << "POINT_DATA "
 			<< "\t" << pn << endl;
-	// outfile << "SCALARS size_pb double 1" << endl;
-	// outfile << "LOOKUP_TABLE table1" << endl;
-	// for (int i = 0; i < pn; i++)
-	// {
-	// 	if (i < macro_n)
-	// 	{
-	// 		outfile << Pb[i].Radiu * 2 << "\t";
-	// 	}
-	// 	else
-	// 	{
-	// 		outfile << Pb[i].Radiu << "\t";
-	// 	}
-	// }
-	// outfile << endl;
+	outfile << "SCALARS size_pb double 1" << endl;
+	outfile << "LOOKUP_TABLE table1" << endl;
+	for (int i = 0; i < pn; i++)
+	{
+		if (i < macro_n)
+		{
+			outfile << Pb[i].Radiu * 2 << "\t";
+		}
+		else
+		{
+			outfile << Pb[i].Radiu << "\t";
+		}
+	}
+	outfile << endl;
 	// 输出编号信息
-	// outfile << "SCALARS NUMBER double 1" << endl;
-	// outfile << "LOOKUP_TABLE table2" << endl;
-	// for (int i = 0; i < pn; i++)
-	// {
-	// 	outfile << i << endl;
-	// }
+	outfile << "SCALARS NUMBER double 1" << endl;
+	outfile << "LOOKUP_TABLE table2" << endl;
+	for (int i = 0; i < pn; i++)
+	{
+		outfile << i << endl;
+	}
 	// 输出压力场信息
 	outfile << "SCALARS Pressure double 1" << endl;
 	outfile << "LOOKUP_TABLE table3" << endl;
@@ -3966,51 +3344,51 @@ void PNMsolver::output(int n, int m)
 	}
 
 	// 输出孔类型信息
-	// outfile << "SCALARS pb_type double 1" << endl;
-	// outfile << "LOOKUP_TABLE table4" << endl;
-	// for (int i = 0; i < pn; i++)
-	// {
-	// 	outfile << Pb[i].type << endl;
-	// }
+	outfile << "SCALARS pb_type double 1" << endl;
+	outfile << "LOOKUP_TABLE table4" << endl;
+	for (int i = 0; i < pn; i++)
+	{
+		outfile << Pb[i].type << endl;
+	}
 
 	// 输出吼道信息
 	outfile << "CELL_DATA"
 			<< "\t" << Pb[pn - 1].full_accum << endl;
-	// outfile << "SCALARS throat_EqRadius double 1" << endl;
-	// outfile << "LOOKUP_TABLE table10" << endl;
-	// for (int i = 0; i < Pb[pn - 1].full_accum; i++)
-	// {
-	// 	outfile << Tb[i].Radiu << endl;
-	// }
+	outfile << "SCALARS throat_EqRadius double 1" << endl;
+	outfile << "LOOKUP_TABLE table10" << endl;
+	for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	{
+		outfile << Tb[i].Radiu << endl;
+	}
 
 	// 输出孔类型信息
-	// outfile << "SCALARS Knusen double 1" << endl;
-	// outfile << "LOOKUP_TABLE table4" << endl;
-	// for (int i = 0; i < Pb[pn - 1].full_accum; i++)
-	// {
-	// 	outfile << Tb[i].Knusen << endl;
-	// }
+	outfile << "SCALARS Knusen double 1" << endl;
+	outfile << "LOOKUP_TABLE table4" << endl;
+	for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	{
+		outfile << Tb[i].Knusen << endl;
+	}
 
-	// outfile << "SCALARS neinuo double 1" << endl;
-	// outfile << "LOOKUP_TABLE table4" << endl;
-	// for (int i = 0; i < Pb[pn - 1].full_accum; i++)
-	// {
-	// 	// 计算克努森数
-	// 	double neinuo{0};
-	// 	double Average_pressure = (Pb[Tb[i].ID_1].pressure + Pb[Tb[i].ID_2].pressure) / 2;
-	// 	double Average_compre = (Pb[Tb[i].ID_1].compre + Pb[Tb[i].ID_2].compre) / 2;
-	// 	double Average_visco = (Pb[Tb[i].ID_1].visco + Pb[Tb[i].ID_2].visco) / 2;
-	// 	if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n)
-	// 	{
-	// 		neinuo = Average_pressure * 0.016 / (Average_compre * 8.314 * Temperature) * Tb[i].Conductivity * abs(Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) / (pi * pow(Tb[i].Radiu, 2)) * Tb[i].Radiu / Average_visco;
-	// 	}
-	// 	else
-	// 	{
-	// 		neinuo = Average_pressure * 0.016 / (Average_compre * 8.314 * Temperature) * Tb[i].Conductivity * abs(Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) / (Tb[i].Radiu) / Average_visco;
-	// 	}
-	// 	// 计算滑移项
-	// 	outfile << neinuo << endl;
-	// }
+	outfile << "SCALARS neinuo double 1" << endl;
+	outfile << "LOOKUP_TABLE table4" << endl;
+	for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	{
+		// 计算克努森数
+		double neinuo{0};
+		double Average_pressure = (Pb[Tb[i].ID_1].pressure + Pb[Tb[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
+		double Average_compre = (Pb[Tb[i].ID_1].compre + Pb[Tb[i].ID_2].compre) / 2;
+		double Average_visco = (Pb[Tb[i].ID_1].visco + Pb[Tb[i].ID_2].visco) / 2;
+		if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n)
+		{
+			neinuo = Average_pressure * 0.016 / (Average_compre * 8.314 * Temperature) * Tb[i].Conductivity * abs(Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) / (pi * pow(Tb[i].Radiu, 2)) * Tb[i].Radiu / Average_visco;
+		}
+		else
+		{
+			neinuo = Average_pressure * 0.016 / (Average_compre * 8.314 * Temperature) * Tb[i].Conductivity * abs(Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) / (Tb[i].Radiu) / Average_visco;
+		}
+		// 计算滑移项
+		outfile << neinuo << endl;
+	}
 
 	// outfile << "SCALARS free_gas_flux double 1" << endl;
 	// outfile << "LOOKUP_TABLE table12" << endl;
@@ -4294,8 +3672,8 @@ void PNMsolver::output(double i)
 	{
 		if (Pb[i].type != 0)
 		{
-			auto n_ad1 = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-			auto n_ad2 = n_max_ad * (K_langmuir * outlet_pre / (1 + K_langmuir * outlet_pre));
+			auto n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+			auto n_ad2 = n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) / (1 + K_langmuir * (outlet_pre + refer_pressure)));
 			auto out{Pb[i].volume * (n_ad1 - n_ad2)};
 			outfile << out << endl;
 		}
@@ -4312,18 +3690,18 @@ void PNMsolver::output(double i)
 	{
 		if (Pb[i].type != 0)
 		{
-			auto compre_1 = compre(inlet_pre);
-			auto compre_2 = compre(outlet_pre);
-			auto n_ad1 = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-			auto n_ad2 = n_max_ad * (K_langmuir * outlet_pre / (1 + K_langmuir * outlet_pre));
-			auto out = inlet_pre * (porosity - n_ad1 / Rho_ad) * Pb[i].volume * 0.016 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * (porosity - n_ad2 / Rho_ad) * 0.016 / (compre_2 * 8.314 * Temperature);
+			auto compre_1 = compre(inlet_pre + refer_pressure);
+			auto compre_2 = compre(outlet_pre + refer_pressure);
+			auto n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+			auto n_ad2 = n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) / (1 + K_langmuir * (outlet_pre + refer_pressure)));
+			auto out = (inlet_pre + refer_pressure) * (porosity - n_ad1 / Rho_ad) * Pb[i].volume * 0.016 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * (porosity - n_ad2 / Rho_ad) * 0.016 / (compre_2 * 8.314 * Temperature);
 			outfile << out << endl;
 		}
 		else
 		{
-			auto compre_1 = compre(inlet_pre);
-			auto compre_2 = compre(outlet_pre);
-			auto out = inlet_pre * Pb[i].volume * 0.016 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * 0.016 / (compre_2 * 8.314 * Temperature);
+			auto compre_1 = compre(inlet_pre + refer_pressure);
+			auto compre_2 = compre(outlet_pre + refer_pressure);
+			auto out = (inlet_pre + refer_pressure) * Pb[i].volume * 0.016 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * 0.016 / (compre_2 * 8.314 * Temperature);
 			outfile << out << endl;
 		}
 	}
@@ -4463,7 +3841,7 @@ void PNMsolver::Eigen_solver()
 	double total_flow = 0;				   // accumulation production
 	ofstream outfile("Gasproduction.txt"); // output permeability;
 
-	Function_DS(inlet_pre);
+	Function_DS(inlet_pre + refer_pressure);
 	memory();
 	Paramentinput();
 	if (time_step != 0)
@@ -4477,7 +3855,7 @@ void PNMsolver::Eigen_solver()
 	}
 	initial_condition();
 	para_cal();
-	PressureMatrix();
+	Matrix_gas_pro();
 
 	auto stop3 = high_resolution_clock::now();
 	auto duration3 = duration_cast<milliseconds>(stop3 - start1);
@@ -4515,7 +3893,7 @@ void PNMsolver::Eigen_solver()
 		do
 		{
 			para_cal_in_newton();
-			PressureMatrix();
+			Matrix_gas_pro();
 			Eigen_subroutine(A0, B0);
 			// MKLsolve();
 			inter_n++;
@@ -4533,19 +3911,19 @@ void PNMsolver::Eigen_solver()
 		acu_ad_micro = 0;
 		for (int i = inlet; i < macro_n - outlet; i++)
 		{
-			double compre_1 = compre(inlet_pre);
-			acu_flow_macro += inlet_pre * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
+			double compre_1 = compre(inlet_pre + refer_pressure);
+			acu_flow_macro += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
 		}
 		for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 		{
-			double compre_old = compre(inlet_pre);
-			double n_ad_new = n_max_ad * (K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure));
-			double n_ad_old = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-			acu_free_micro += (porosity - n_ad_old / Rho_ad) * inlet_pre * Pb[i].volume * 16 / (compre_old * 8.314 * Temperature) - (porosity - n_ad_new / Rho_ad) * Pb[i].pressure * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
+			double compre_old = compre(inlet_pre + refer_pressure);
+			double n_ad_new = n_max_ad * (K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure)));
+			double n_ad_old = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+			acu_free_micro += (porosity - n_ad_old / Rho_ad) * (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_old * 8.314 * Temperature) - (porosity - n_ad_new / Rho_ad) * (Pb[i].pressure + refer_pressure) * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
 		}
 		for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 		{
-			acu_ad_micro += Pb[i].volume * n_max_ad * 1000 * abs(K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre) - K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure)); // 微孔累计产气质量 单位g
+			acu_ad_micro += Pb[i].volume * n_max_ad * 1000 * abs(K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)) - K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure))); // 微孔累计产气质量 单位g
 		}
 
 		total_flow = acu_flow_macro + acu_free_micro + acu_ad_micro;
@@ -4595,11 +3973,13 @@ void PNMsolver::Eigen_solver()
 		{
 			dt = dt * 2;
 		}
+
 		if (total_flow / total_p > 0.1 * n)
 		{
 			output(time_step);
 			n++;
 		}
+
 		time_step++;
 	} while (total_flow / total_p < 0.99);
 	output(time_step);
@@ -4624,7 +4004,8 @@ void PNMsolver::Eigen_solver_per()
 	double total_flow = 0;								 // accumulation production
 	ofstream outfile("Apparent_Permeability_Eigen.txt"); // output permeability;
 	Flag_eigen = true;
-	Function_DS(inlet_pre);
+	Flag_intri_per = false;
+	Function_DS(inlet_pre + refer_pressure);
 	memory();
 	Paramentinput();
 	initial_condition();
@@ -4658,21 +4039,18 @@ void PNMsolver::Eigen_solver_per()
 		auto stop2 = high_resolution_clock::now();
 		auto duration2 = duration_cast<milliseconds>(stop2 - start1);
 
-		outfile << (macro + micro_advec + micro_diff) * visco(inlet_pre, compre(inlet_pre), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << "\t"
-				<< inlet_pre / 1e6 << "\t"
+		outfile << (macro + micro_advec + micro_diff) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << "\t"
+				<< (inlet_pre + refer_pressure) / 1e6 << "\t"
 				<< duration2.count() / 1000 << "s" << "\t"
-				<< iters_globa
 				<< endl;
-		inlet_pre = i * 1e6;
-		outlet_pre = inlet_pre - 100;
-		Function_DS(inlet_pre);
+		refer_pressure = i * 1e6;
+		Function_DS(inlet_pre + refer_pressure);
 		initial_condition();
-		output(1, 1);
 	}
 	outfile.close();
 }
 
-void PNMsolver::AMGXsolver_subroutine(AMGX_matrix_handle &A_amgx, AMGX_vector_handle &b_amgx, AMGX_vector_handle &solution_amgx, AMGX_solver_handle &solver, int n_amgx, int nnz_amgx)
+void PNMsolver::AMGX_solver_subroutine(AMGX_matrix_handle &A_amgx, AMGX_vector_handle &b_amgx, AMGX_vector_handle &solution_amgx, AMGX_solver_handle &solver, int n_amgx, int nnz_amgx)
 {
 	auto start = high_resolution_clock::now();
 	static int icount{0};
@@ -4726,7 +4104,7 @@ void PNMsolver::AMGXsolver_subroutine(AMGX_matrix_handle &A_amgx, AMGX_vector_ha
 	cout << "Time-consuming = " << duration.count() << " MS" << endl;
 };
 
-void PNMsolver::AMGXsolver_subroutine_per(AMGX_matrix_handle &A_amgx, AMGX_vector_handle &b_amgx, AMGX_vector_handle &solution_amgx, AMGX_solver_handle &solver, int n_amgx, int nnz_amgx)
+void PNMsolver::AMGX_solver_subroutine_per(AMGX_matrix_handle &A_amgx, AMGX_vector_handle &b_amgx, AMGX_vector_handle &solution_amgx, AMGX_solver_handle &solver, int n_amgx, int nnz_amgx)
 {
 	auto start = high_resolution_clock::now();
 	static int icount{0};
@@ -4745,28 +4123,31 @@ void PNMsolver::AMGXsolver_subroutine_per(AMGX_matrix_handle &A_amgx, AMGX_vecto
 	AMGX_solver_solve_with_0_initial_guess(solver, b_amgx, solution_amgx);
 	AMGX_vector_download(solution_amgx, dX);
 
-	/*--------------------------x(t+dt) = x(t) + dx----------------------*/
-	// 更新应力场
-	for (int i = inlet; i < inlet + op; i++)
+	if (Flag_intri_per == true)
 	{
-		Pb[i].pressure = dX[i - inlet];
+		// 更新应力场
+		for (int i = inlet; i < inlet + op; i++)
+		{
+			Pb[i].pressure = dX[i - inlet];
+		}
+		for (int i = op; i < op + mp; i++)
+		{
+			Pb[i + inlet + outlet + m_inlet].pressure = dX[i];
+		}
 	}
-	for (int i = op; i < op + mp; i++)
+	else
 	{
-		Pb[i + inlet + outlet + m_inlet].pressure = dX[i];
+		// 更新应力场
+		for (int i = inlet; i < inlet + op; i++)
+		{
+			Pb[i].pressure += dX[i - inlet];
+		}
+		for (int i = op; i < op + mp; i++)
+		{
+			Pb[i + inlet + outlet + m_inlet].pressure += dX[i];
+		}
 	}
-	/*--------------------------x(t+dt) = x(t) + dx----------------------*/
 
-	/*-----------------------------边界条件---------------------------------*/
-	// for (int i = 0; i < inlet; i++)
-	// {
-	// 	Pb[i].pressure = inlet_pre;
-	// }
-	// for (int i = macro_n; i < macro_n + m_inlet; i++)
-	// {
-	// 	Pb[i].pressure = inlet_pre;
-	// }
-	/*-----------------------------边界条件---------------------------------*/
 	auto stop = high_resolution_clock::now();
 	auto duration = duration_cast<milliseconds>(stop - start);
 	cout << "Time-consuming = " << duration.count() << " MS" << endl;
@@ -4783,7 +4164,7 @@ void PNMsolver::AMGXsolver()
 	double total_flow = 0;						 // accumulation production
 	ofstream outfile("Transient.txt", ios::app); // output permeability;
 
-	Function_DS(inlet_pre);
+	Function_DS(inlet_pre + refer_pressure);
 	memory();
 	Paramentinput();
 	if (time_step != 0)
@@ -4796,13 +4177,13 @@ void PNMsolver::AMGXsolver()
 		initial_condition();
 	}
 	para_cal();
-	PressureMatrix();
+	Matrix_gas_pro();
 
 	// begin AMGX initialization
 	AMGX_initialize();
 
 	AMGX_config_handle config;
-	AMGX_config_create_from_file(&config, "/root/autodl-tmp/amgx/AMGX/build/configs/core/FGMRES_AGGREGATION.json"); // 200
+	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/1.json"); // 200
 
 	AMGX_resources_handle rsrc;
 	AMGX_resources_create_simple(&rsrc, config);
@@ -4848,19 +4229,19 @@ void PNMsolver::AMGXsolver()
 			<< "acu_flow_micro / total_p = " << acu_free_micro / total_p << "\t"
 			<< "acu_ad_micro / total_p = " << acu_ad_micro / total_p << "\t"
 			<< endl;
-	// output(time_step - 1); // 初始状态
+	output(time_step - 1); // 初始状态
 	// end AMGX initialization
 	// ************ begin AMGX solver ************
 	int nn{1};
-	AMGXsolver_subroutine(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+	AMGX_solver_subroutine(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 	do
 	{
 		inter_n = 0;
 		do
 		{
 			para_cal_in_newton();
-			PressureMatrix();
-			AMGXsolver_subroutine(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+			Matrix_gas_pro();
+			AMGX_solver_subroutine(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 			// MKLsolve();
 			inter_n++;
 			cout << "Inf_norm = " << norm_inf << "\t\t"
@@ -4877,19 +4258,19 @@ void PNMsolver::AMGXsolver()
 		acu_ad_micro = 0;
 		for (int i = inlet; i < macro_n - outlet; i++)
 		{
-			double compre_1 = compre(inlet_pre);
-			acu_flow_macro += inlet_pre * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - Pb[i].pressure * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
+			double compre_1 = compre(inlet_pre + refer_pressure);
+			acu_flow_macro += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (Pb[i].pressure + refer_pressure) * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
 		}
 		for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 		{
-			double compre_old = compre(inlet_pre);
-			double n_ad_new = n_max_ad * (K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure));
-			double n_ad_old = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-			acu_free_micro += (porosity - n_ad_old / Rho_ad) * inlet_pre * Pb[i].volume * 16 / (compre_old * 8.314 * Temperature) - (porosity - n_ad_new / Rho_ad) * Pb[i].pressure * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
+			double compre_old = compre(inlet_pre + refer_pressure);
+			double n_ad_new = n_max_ad * (K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure)));
+			double n_ad_old = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+			acu_free_micro += (porosity - n_ad_old / Rho_ad) * (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_old * 8.314 * Temperature) - (porosity - n_ad_new / Rho_ad) * (Pb[i].pressure + refer_pressure) * Pb[i].volume * 16 / (Pb[i].compre * 8.314 * Temperature);
 		}
 		for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 		{
-			acu_ad_micro += Pb[i].volume * n_max_ad * 1000 * abs(K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre) - K_langmuir * Pb[i].pressure / (1 + K_langmuir * Pb[i].pressure)); // 微孔累计产气质量 单位g
+			acu_ad_micro += Pb[i].volume * n_max_ad * 1000 * abs(K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)) - K_langmuir * (Pb[i].pressure + refer_pressure) / (1 + K_langmuir * (Pb[i].pressure + refer_pressure))); // 微孔累计产气质量 单位g
 		}
 
 		total_flow = acu_flow_macro + acu_free_micro + acu_ad_micro;
@@ -4939,39 +4320,17 @@ void PNMsolver::AMGXsolver()
 		{
 			dt = dt * 2;
 		}
-		// if (inter_n > 100)
-		// {
-		// 	dt = dt / 2;
-		// }
-		// if (total_flow / total_p > 0.1 * n)
-		// {
-		// 	output(time_step);
-		// 	n++;
-		// }
 
-		// if (total_flow / total_p > 0.1 * n)
-		// {
-		// 	output(time_step);
-		// 	n++;
-		// }
-
-		// if (total_flow / total_p > 0.9+0.01 * nn)
-		// {
-		// 	output(time_step);
-		// 	nn++;
-		// }
-
-		// if (total_flow / total_p > 0.95)
-		// {
-		// 	output(time_step);
-		// }
-		// output(time_step);
+		if (total_flow / total_p > 0.1 * n)
+		{
+			output(time_step);
+			n++;
+		}
 
 		time_step++;
 	} while (total_flow / total_p < 0.99);
-	// output(time_step);
-	// total_flow / total_p < 0.99
-	// while (time_step<100);  while (Error() > 1e-8);
+	output(time_step);
+
 	outfile.close();
 	auto stop1 = high_resolution_clock::now();
 	auto duration1 = duration_cast<milliseconds>(stop1 - start1);
@@ -5034,33 +4393,33 @@ void PNMsolver::Matrix_permeability()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 			}
 			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n) // 出口
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 			}
 			else
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 
 				if (Tb[j].ID_1 > Tb[j].ID_2)
@@ -5083,22 +4442,22 @@ void PNMsolver::Matrix_permeability()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
 			}
 			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
 			}
 			else
@@ -5108,14 +4467,14 @@ void PNMsolver::Matrix_permeability()
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
 
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
-						a[num - 1] += Tb[j].Conductivity * (-0.016 * Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+						a[num - 1] += Tb[j].Conductivity * (-0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
 					}
 					else
 					{
 
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
-						a[num - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
 					}
 
 					if (Tb[j].ID_2 < macro_n)
@@ -5134,14 +4493,14 @@ void PNMsolver::Matrix_permeability()
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
 
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
-						a[num] += Tb[j].Conductivity * (-0.016 * Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+						a[num] += Tb[j].Conductivity * (-0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
 					}
 					else
 					{
 
-						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
-						a[num] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
 					}
 					if (Tb[j].ID_2 < macro_n)
 					{
@@ -5173,37 +4532,37 @@ void PNMsolver::Matrix_permeability()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
-				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * Pb[Tb[j].ID_1].pressure / (1 + K_langmuir * Pb[Tb[j].ID_1].pressure) - K_langmuir * Pb[Tb[j].ID_2].pressure / (1 + K_langmuir * Pb[Tb[j].ID_2].pressure));
+				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure)));
 			}
 			else if (Tb[j].ID_2 >= pn - m_outlet)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
-				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * Pb[Tb[j].ID_1].pressure / (1 + K_langmuir * Pb[Tb[j].ID_1].pressure) - K_langmuir * Pb[Tb[j].ID_2].pressure / (1 + K_langmuir * Pb[Tb[j].ID_2].pressure));
+				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure)));
 			}
 			else
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_1].pressure / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += -0.016 * Pb[Tb[j].ID_2].pressure / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
 				}
-				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * Pb[Tb[j].ID_1].pressure / (1 + K_langmuir * Pb[Tb[j].ID_1].pressure) - K_langmuir * Pb[Tb[j].ID_2].pressure / (1 + K_langmuir * Pb[Tb[j].ID_2].pressure));
+				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure)));
 
 				if (Tb[j].ID_1 > Tb[j].ID_2)
 				{
@@ -5223,25 +4582,25 @@ void PNMsolver::Matrix_permeability()
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
-				a[ia[i - para_macro] + temp - 1] += Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2);
+				a[ia[i - para_macro] + temp - 1] += Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2);
 			}
 			else if (Tb[j].ID_2 >= pn - m_outlet)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
 				}
 				else
 				{
-					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
 				}
-				a[ia[i - para_macro] + temp - 1] += Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2);
+				a[ia[i - para_macro] + temp - 1] += Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2);
 			}
 			else
 			{
@@ -5249,13 +4608,13 @@ void PNMsolver::Matrix_permeability()
 				{
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2); // 对角线
-						a[num - 1] += 0.016 * Tb[j].Conductivity * (-Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * Pb[Tb[j].ID_2].pressure, 2);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * (-(Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
 					}
 					else
 					{
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2); // 对角线
-						a[num - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * Pb[Tb[j].ID_2].pressure, 2);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
 					}
 
 					if (Tb[j].ID_2 < macro_n)
@@ -5274,13 +4633,13 @@ void PNMsolver::Matrix_permeability()
 					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 					{
 
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2); // 对角线
-						a[num] += 0.016 * Tb[j].Conductivity * (-Pb[Tb[j].ID_1].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * Pb[Tb[j].ID_2].pressure, 2);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * (-(Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
 					}
 					else
 					{
-						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * Pb[Tb[j].ID_1].pressure, 2); // 对角线
-						a[num] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - 2 * Pb[Tb[j].ID_2].pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * Pb[Tb[j].ID_2].pressure, 2);
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
 					}
 
 					if (Tb[j].ID_2 < macro_n)
@@ -5311,6 +4670,185 @@ void PNMsolver::Matrix_permeability()
 	}
 };
 
+void PNMsolver::para_cal_in_newton()
+{
+	// 计算压缩系数
+	for (int i = 0; i < pn; i++)
+	{
+		Pb[i].compre = compre(Pb[i].pressure + refer_pressure);
+		Pb[i].visco = visco(Pb[i].pressure + refer_pressure, Pb[i].compre, Temperature);
+	}
+
+	// 水力传导系数计算
+	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
+
+	for (int i = 0; i < 2 * tn; i++)
+	{
+		// 计算克努森数
+		double Knusen_number{0};
+		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
+		double Average_compre = (Pb[Tb_in[i].ID_1].compre + Pb[Tb_in[i].ID_2].compre) / 2;
+		double Average_visco = (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2;
+		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
+		{
+			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Tb_in[i].Radiu * 2);
+		}
+		else
+		{
+			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (micro_radius * 2);
+		}
+		// 计算滑移项
+		double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
+		double beta = 4;
+		double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
+		Tb_in[i].Knusen = Knusen_number;
+		Tb_in[i].Slip = Slip;
+		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
+		{
+			if (Tb_in[i].Length <= 0) // 剔除可能存在的负喉道长度
+			{
+				Tb_in[i].Length = 0.5 * voxel_size;
+			}
+			Tb_in[i].Conductivity = Slip * pi * pow(Tb_in[i].Radiu, 4) / (8 * Average_visco * Tb_in[i].Length);
+			Tb_in[i].Surface_diff_conduc = 0;
+		}
+		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
+		{
+			temp1 = Slip * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 3) / (8 * Average_visco);
+			length2 = sqrt(pow(Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z, 2));
+			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
+			{
+				angle2 = (Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x) / length2;
+			}
+			else if (Tb_in[i].n_direction == 2 || Tb_in[i].n_direction == 3)
+			{
+				angle2 = (Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y) / length2;
+			}
+			else if (Tb_in[i].n_direction == 4 || Tb_in[i].n_direction == 5)
+			{
+				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
+			}
+			temp2 = abs(Slip * Pb[Tb_in[i].ID_2].km * Tb_in[i].Radiu * angle2 / (Average_visco * length2));
+			temp11 = abs(pi * Pb[Tb_in[i].ID_1].Radiu * Ds * n_max_ad);
+			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
+
+			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
+			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+		}
+		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
+		{
+			temp2 = Slip * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 3) / (8 * Average_visco);
+			length1 = sqrt(pow(Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z, 2));
+			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
+			{
+				angle1 = (Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x) / length1;
+			}
+			else if (Tb_in[i].n_direction == 2 || Tb_in[i].n_direction == 3)
+			{
+				angle1 = (Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y) / length1;
+			}
+			else if (Tb_in[i].n_direction == 4 || Tb_in[i].n_direction == 5)
+			{
+				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
+			}
+			temp1 = abs(Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
+
+			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
+			temp22 = abs(pi * Pb[Tb_in[i].ID_2].Radiu * Ds * n_max_ad);
+			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
+			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+		}
+		else if (Tb_in[i].ID_1 < macro_n + m_inlet || Tb_in[i].ID_1 >= pn - m_outlet || Tb_in[i].ID_2 < macro_n + m_inlet || Tb_in[i].ID_2 >= pn - m_outlet)
+		{
+			Tb_in[i].Conductivity = Slip * ko * Tb_in[i].Radiu / (Average_visco * Tb_in[i].Length);
+			Tb_in[i].Surface_diff_conduc = Tb_in[i].Radiu * Ds * n_max_ad / Tb_in[i].Length;
+		}
+		else
+		{
+			length1 = sqrt(pow(Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z, 2));
+			length2 = sqrt(pow(Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z, 2));
+			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
+			{
+				angle1 = (Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x) / length1;
+				angle2 = (Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x) / length2;
+			}
+			else if (Tb_in[i].n_direction == 2 || Tb_in[i].n_direction == 3)
+			{
+				angle1 = (Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y) / length1;
+				angle2 = (Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y) / length2;
+			}
+			else if (Tb_in[i].n_direction == 4 || Tb_in[i].n_direction == 5)
+			{
+				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
+				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
+			}
+			temp1 = abs(Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
+			temp2 = abs(Slip * Pb[Tb_in[i].ID_2].km * Tb_in[i].Radiu * angle2 / (Average_visco * length2));
+			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
+			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
+			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
+			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+		}
+	}
+
+	// merge throat
+	int label = 0;
+	Tb[0].ID_1 = Tb_in[0].ID_1;
+	Tb[0].ID_2 = Tb_in[0].ID_2;
+	Tb[0].Radiu = Tb_in[0].Radiu;
+	Tb[0].Conductivity = Tb_in[0].Conductivity;
+	Tb[0].Surface_diff_conduc = Tb_in[0].Surface_diff_conduc;
+	Tb[0].Knusen = Tb_in[0].Knusen;
+	Tb[0].Slip = Tb_in[0].Slip;
+	for (int i = 1; i < 2 * tn; i++)
+	{
+		if (Tb[label].ID_1 == Tb_in[i].ID_1 && Tb[label].ID_2 == Tb_in[i].ID_2)
+		{
+			Tb[label].Conductivity += Tb_in[i].Conductivity;
+		}
+		else
+		{
+			label++;
+			Tb[label].ID_1 = Tb_in[i].ID_1;
+			Tb[label].ID_2 = Tb_in[i].ID_2;
+			Tb[label].Radiu = Tb_in[i].Radiu;
+			Tb[label].Conductivity = Tb_in[i].Conductivity;
+			Tb[label].Surface_diff_conduc = Tb_in[i].Surface_diff_conduc;
+			Tb[label].Knusen = Tb_in[i].Knusen;
+			Tb[label].Slip = Tb_in[i].Slip;
+		}
+	}
+	// full_coord
+	for (int i = 0; i < pn; i++)
+	{
+		Pb[i].full_coord = 0;
+		Pb[i].full_accum = 0;
+	}
+
+	for (int i = 0; i <= label; i++)
+	{
+		Pb[Tb[i].ID_1].full_coord += 1;
+	}
+
+	// full_accum
+	Pb[0].full_accum = Pb[0].full_coord;
+	for (int i = 1; i < pn; i++)
+	{
+		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
+	}
+
+	// 参数输出验证
+	/*for (int i = 0;i < pn;i++)
+	{
+		cout << "volume[" << i << "]=" << Pb[i].volume << endl;
+	}*/
+
+	/*for (int i = 738117;i < tn;i++)
+	{
+		cout << "ChannelLength[" << i << "]=" << Tb[i].Length << "\t" << "cond[" << i << "]=" << Tb[i].Conductivity << endl;
+	}*/
+}
+
 void PNMsolver::AMGX_permeability_solver()
 {
 	auto start1 = high_resolution_clock::now();
@@ -5322,7 +4860,8 @@ void PNMsolver::AMGX_permeability_solver()
 	ofstream outfile("apparent_Permeability_amgx.txt", ios::app); // output permeability;
 
 	Flag_eigen = false;
-	Function_DS(inlet_pre);
+	Flag_intri_per = false;
+	Function_DS(inlet_pre + refer_pressure);
 	memory();
 	Paramentinput();
 	initial_condition();
@@ -5360,18 +4899,18 @@ void PNMsolver::AMGX_permeability_solver()
 	// end AMGX initialization
 
 	// ************ begin AMGX solver ************
-	AMGXsolver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+	AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 	for (size_t i = 2; i < 52; i++)
 	{
 		para_cal_in_newton();
 		Matrix_permeability();
-		AMGXsolver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+		AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 		inter_n = 0;
 		do
 		{
 			para_cal_in_newton();
 			Matrix_permeability();
-			AMGXsolver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+			AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 			inter_n++;
 			cout << "Inf_norm = " << norm_inf << "\t\t"
 				 << "inner loop = " << inter_n
@@ -5385,36 +4924,31 @@ void PNMsolver::AMGX_permeability_solver()
 		auto stop2 = high_resolution_clock::now();
 		auto duration2 = duration_cast<milliseconds>(stop2 - start1);
 
-		outfile << (macro + micro_advec + micro_diff) * visco(inlet_pre, compre(inlet_pre), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << "\t"
-				<< inlet_pre / 1e6 << "\t"
-				<< (macro + micro_advec + micro_diff) * visco(inlet_pre, compre(inlet_pre), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1.42925e-20 << "\t"
-				<< total_macro << "\t"
-				<< total_micro_free << "\t"
-				<< total_micro_ad << "\t"
+		outfile << (macro + micro_advec + micro_diff) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << "\t"
+				<< (inlet_pre + refer_pressure) / 1e6 << "\t"
+				<< duration2.count() / 1000 << "s" << "\t"
 				<< endl;
-		// output(1, 1);
-		inlet_pre = i * 1e6;
-		outlet_pre = inlet_pre - 100;
-		Function_DS(inlet_pre);
+		refer_pressure = i * 1e6;
+		Function_DS(inlet_pre + refer_pressure);
 		initial_condition();
 		total_macro = 0;
 		total_micro_free = 0;
 		total_micro_ad = 0;
 		for (int i = inlet; i < macro_n - outlet; i++)
 		{
-			double compre_1 = compre(inlet_pre);
-			double compre_2 = compre(outlet_pre);
-			total_macro += inlet_pre * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
+			double compre_1 = compre(inlet_pre + refer_pressure);
+			double compre_2 = compre(outlet_pre + refer_pressure);
+			total_macro += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
 		}
 		for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 		{
-			double compre_1 = compre(inlet_pre);
-			double compre_2 = compre(outlet_pre);
+			double compre_1 = compre(inlet_pre + refer_pressure);
+			double compre_2 = compre(outlet_pre + refer_pressure);
 
-			double n_ad1 = n_max_ad * (K_langmuir * inlet_pre / (1 + K_langmuir * inlet_pre));
-			double n_ad2 = n_max_ad * (K_langmuir * outlet_pre / (1 + K_langmuir * outlet_pre));
+			double n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+			double n_ad2 = n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) / (1 + K_langmuir * (outlet_pre + refer_pressure)));
 
-			total_micro_free += inlet_pre * (porosity - n_ad1 / Rho_ad) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - outlet_pre * Pb[i].volume * (porosity - n_ad2 / Rho_ad) * 16 / (compre_2 * 8.314 * Temperature);
+			total_micro_free += (inlet_pre + refer_pressure) * (porosity - n_ad1 / Rho_ad) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * (porosity - n_ad2 / Rho_ad) * 16 / (compre_2 * 8.314 * Temperature);
 			total_micro_ad += Pb[i].volume * (n_ad1 - n_ad2) * 1000;
 		}
 	}
@@ -5440,8 +4974,9 @@ void PNMsolver::AMGX_permeability_solver()
 
 void PNMsolver::Matrix_permeability(double mode)
 {
-	auto start1 = high_resolution_clock::now();
-
+#ifdef _OPENMP
+	double start = omp_get_wtime();
+#endif
 	int num;	  // 每行第一个非0参数的累计编号
 	int num1 = 0; // 矩阵中每行的非0数据数量
 	int temp;	  // 确定对角线前面的数据数量
@@ -5449,12 +4984,17 @@ void PNMsolver::Matrix_permeability(double mode)
 	int temp2 = 0;
 
 	ia[0] = 1;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
 	for (int i = 0; i < NA; i++)
 	{
 		ja[i] = 0;
 		a[i] = 0;
 	}
-
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
 	for (int i = 0; i < op + mp; i++)
 	{
 		B[i] = 0;
@@ -5468,29 +5008,29 @@ void PNMsolver::Matrix_permeability(double mode)
 		B[i - inlet] = 0;
 		temp = 0, temp1 = 0;
 		num = ia[i - inlet];
-		// macropore
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
 		{
+			// printf("i = %d,j = %d, I am Thread %d\n", i, j, omp_get_thread_num());
 			if (Tb[j].ID_2 < inlet) // 进口
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
+					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
+					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure);
 				}
 			}
 			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n) // 出口
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
+					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
+					B[Tb[j].ID_1 - inlet] += Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure);
 				}
 			}
 			else
@@ -5511,8 +5051,7 @@ void PNMsolver::Matrix_permeability(double mode)
 				num1++; // 除对角线值外矩阵每行非0值数量
 			}
 		}
-		num1 += 1; // 加上对角线的非0值
-		/*cout << num1 << "\t" << full_coord[i] << endl;*/
+		num1 += 1;					  // 加上对角线的非0值
 		ia[i - inlet + 1] = num1 + 1; // 前i行累计的非零值数量，其中1为ia[0]的值
 
 		ja[num + temp - 1] = i - inlet + 1; // 第i行对角线的值的位置
@@ -5520,6 +5059,7 @@ void PNMsolver::Matrix_permeability(double mode)
 
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
 		{
+			// printf("i = %d,j = %d, I am Thread %d\n", i, j, omp_get_thread_num());
 			if (Tb[j].ID_2 < inlet)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
@@ -5601,35 +5141,35 @@ void PNMsolver::Matrix_permeability(double mode)
 	/* -------------------------------------------------------------------------------------  */
 	/* 微孔组装 */
 	/* -------------------------------------------------------------------------------------  */
+
 	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 	{
 		B[i - para_macro] = 0;
-
 		temp = 0, temp1 = 0;
 		num = ia[i - para_macro];
-		// micropore
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
 		{
+			// printf("i = %d,j = %d, I am Thread %d\n", i, j, omp_get_thread_num());
 			if (Tb[j].ID_2 >= macro_n && Tb[j].ID_2 < macro_n + m_inlet) // 微孔进出口边界
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
+					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
+					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure);
 				}
 			}
 			else if (Tb[j].ID_2 >= pn - m_outlet)
 			{
 				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 				{
-					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
+					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure);
 				}
 				else
 				{
-					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * Pb[Tb[j].ID_2].pressure;
+					B[Tb[j].ID_1 - para_macro] += Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure);
 				}
 			}
 			else
@@ -5654,6 +5194,7 @@ void PNMsolver::Matrix_permeability(double mode)
 		ia[i - para_macro + 1] = num1 + 1;		 // 前i行累计的非零值数量，其中1为ia[0]的值
 		ja[num + temp - 1] = i - para_macro + 1; // 第i行对角线的值的位置
 		a[num + temp - 1] = 0;
+
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++) // 主对角线的初始值
 		{
 			if (Tb[j].ID_2 >= macro_n && Tb[j].ID_2 < macro_n + m_inlet)
@@ -5734,6 +5275,330 @@ void PNMsolver::Matrix_permeability(double mode)
 
 	if (Flag_eigen == false)
 	{
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
+		for (size_t i = 0; i < op + mp + 1; i++)
+		{
+			ia[i] += -1;
+		}
+
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
+		for (size_t i = 0; i < ia[op + mp]; i++)
+		{
+			ja[i] += -1;
+		}
+	}
+
+#ifdef _OPENMP
+	double end = omp_get_wtime();
+	printf("matrix diff = %.16g\n",
+		   end - start);
+#endif
+};
+
+void PNMsolver::Matrix_per_REV()
+{
+	int num;	  // 每行第一个非0参数的累计编号
+	int num1 = 0; // 矩阵中每行的非0数据数量
+	int temp;	  // 确定对角线前面的数据数量
+	int temp1;
+	int temp2 = 0;
+
+	ia[0] = 1;
+	for (int i = 0; i < NA; i++)
+	{
+		ja[i] = 0;
+		a[i] = 0;
+	}
+
+	for (int i = 0; i < op + mp; i++)
+	{
+		B[i] = 0;
+	}
+
+	/* -------------------------------------------------------------------------------------  */
+	/* 大孔组装 */
+	/* -------------------------------------------------------------------------------------  */
+	for (int i = inlet; i < op + inlet; i++)
+	{
+		B[i - inlet] = 0;
+		temp = 0, temp1 = 0;
+		num = ia[i - inlet];
+		// macropore
+		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
+		{
+			if (Tb[j].ID_2 < inlet) // 进口
+			{
+				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+				{
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+				else
+				{
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+			}
+			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n) // 出口
+			{
+				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+				{
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+				else
+				{
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+			}
+			else
+			{
+				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+				{
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+				else
+				{
+					B[Tb[j].ID_1 - inlet] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+
+				if (Tb[j].ID_1 > Tb[j].ID_2)
+				{
+					temp++; // 矩阵每行对角线值前面的非0值数量
+				}
+				num1++; // 除对角线值外矩阵每行非0值数量
+			}
+		}
+		num1 += 1; // 加上对角线的非0值
+		/*cout << num1 << "\t" << full_coord[i] << endl;*/
+		ia[i - inlet + 1] = num1 + 1; // 前i行累计的非零值数量，其中1为ia[0]的值
+
+		ja[num + temp - 1] = i - inlet + 1; // 第i行对角线的值的位置
+		a[num + temp - 1] = 0;				// 主对角线的初始值
+
+		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
+		{
+			if (Tb[j].ID_2 < inlet)
+			{
+				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+				{
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+				}
+				else
+				{
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+				}
+			}
+			else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n)
+			{
+				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+				{
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+				}
+				else
+				{
+					a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+				}
+			}
+			else
+			{
+				if (temp1 < temp) // 下三角
+				{
+					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+					{
+
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+						a[num - 1] += Tb[j].Conductivity * (-0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
+					}
+					else
+					{
+
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
+					}
+
+					if (Tb[j].ID_2 < macro_n)
+					{
+						ja[num - 1] = Tb[j].ID_2 - inlet + 1; // 下三角值的列位置
+					}
+					else
+					{
+						ja[num - 1] = Tb[j].ID_2 - para_macro + 1; // 下三角值的列位置
+					}
+					num++;
+					temp1++;
+				}
+				else // 上三角
+				{
+					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+					{
+
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+						a[num] += Tb[j].Conductivity * (-0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre);
+					}
+					else
+					{
+
+						a[ia[i - inlet] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre);
+					}
+					if (Tb[j].ID_2 < macro_n)
+					{
+						ja[num] = Tb[j].ID_2 - inlet + 1; // 下三角值的列位置
+					}
+					else
+					{
+						ja[num] = Tb[j].ID_2 - para_macro + 1; // 下三角值的列位置
+					}
+					num++;
+				}
+			}
+		}
+	}
+
+	/* -------------------------------------------------------------------------------------  */
+	/* 微孔组装 */
+	/* -------------------------------------------------------------------------------------  */
+	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
+	{
+		B[i - para_macro] = 0;
+
+		temp = 0, temp1 = 0;
+		num = ia[i - para_macro];
+		// micropore
+		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
+		{
+			if (Tb[j].ID_2 >= macro_n && Tb[j].ID_2 < macro_n + m_inlet) // 微孔进出口边界
+			{
+				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+				{
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+				else
+				{
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure)));
+			}
+			else if (Tb[j].ID_2 >= pn - m_outlet)
+			{
+				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+				{
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+				else
+				{
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure)));
+			}
+			else
+			{
+				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+				{
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+				else
+				{
+					B[Tb[j].ID_1 - para_macro] += -0.016 * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature) * Tb[j].Conductivity * (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure);
+				}
+				B[Tb[j].ID_1 - para_macro] += -Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure)));
+
+				if (Tb[j].ID_1 > Tb[j].ID_2)
+				{
+					temp++; // 矩阵每行对角线值前面的非0值数量
+				}
+				num1++; // 除对角线值外矩阵每行非0值数量
+			}
+		}
+		num1 += 1; // 加上对角线的非0值
+		/*cout << num1 << "\t" << full_coord[i] << endl;*/
+		ia[i - para_macro + 1] = num1 + 1;		 // 前i行累计的非零值数量，其中1为ia[0]的值
+		ja[num + temp - 1] = i - para_macro + 1; // 第i行对角线的值的位置
+		a[num + temp - 1] = 0;
+		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++) // 主对角线的初始值
+		{
+			if (Tb[j].ID_2 >= macro_n && Tb[j].ID_2 < macro_n + m_inlet)
+			{
+				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+				{
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+				}
+				else
+				{
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+				}
+				a[ia[i - para_macro] + temp - 1] += Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2);
+			}
+			else if (Tb[j].ID_2 >= pn - m_outlet)
+			{
+				if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+				{
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre); // 对角线
+				}
+				else
+				{
+					a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre); // 对角线
+				}
+				a[ia[i - para_macro] + temp - 1] += Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2);
+			}
+			else
+			{
+				if (temp1 < temp) // 下三角
+				{
+					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+					{
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * (-(Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
+					}
+					else
+					{
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num - 1] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
+					}
+
+					if (Tb[j].ID_2 < macro_n)
+					{
+						ja[num - 1] = Tb[j].ID_2 - inlet + 1; // 下三角值的列位置
+					}
+					else
+					{
+						ja[num - 1] = Tb[j].ID_2 - para_macro + 1; // 下三角值的列位置
+					}
+					num++;
+					temp1++;
+				}
+				else // 上三角
+				{
+					if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
+					{
+
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (2 * (Pb[Tb[j].ID_1].pressure + refer_pressure) - (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * (-(Pb[Tb[j].ID_1].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_1].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
+					}
+					else
+					{
+						a[ia[i - para_macro] + temp - 1] += 0.016 * Tb[j].Conductivity * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * K_langmuir / pow(1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure), 2); // 对角线
+						a[num] += 0.016 * Tb[j].Conductivity * ((Pb[Tb[j].ID_1].pressure + refer_pressure) - 2 * (Pb[Tb[j].ID_2].pressure + refer_pressure)) / (8.314 * Temperature * Pb[Tb[j].ID_2].compre) + Tb[j].Surface_diff_conduc * (-K_langmuir) / pow(1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure), 2);
+					}
+
+					if (Tb[j].ID_2 < macro_n)
+					{
+						ja[num] = Tb[j].ID_2 - inlet + 1; // 下三角值的列位置
+					}
+					else
+					{
+						ja[num] = Tb[j].ID_2 - para_macro + 1; // 下三角值的列位置
+					}
+					num++;
+				}
+			}
+		}
+	}
+
+	if (Flag_eigen == false)
+	{
 		for (size_t i = 0; i < op + mp + 1; i++)
 		{
 			ia[i] += -1;
@@ -5744,33 +5609,45 @@ void PNMsolver::Matrix_permeability(double mode)
 			ja[i] += -1;
 		}
 	}
-	auto stop2 = high_resolution_clock::now();
-	auto duration2 = duration_cast<milliseconds>(stop2 - start1);
+}
 
-	cout << "matrix done " << duration2.count() / 1000 << " s" << endl;
-};
-
-void PNMsolver::AMGX_permeability_solver(double mode)
+void PNMsolver::AMGX_solver_apparent_permeability_REV()
 {
-	int n = 1;											 // label of output file
-	double total_flow = 0;								 // accumulation production
-	ofstream outfile("Intrinsic_permeability_amgx.txt"); // output permeability;
+	if (Sw_clay >= 0.95)
+	{
+		K_Clay = 1e-30;
+	}
+
+	if (Sw_om >= 0.95)
+	{
+		K_OM_HP = 1e-30;
+		K_OM_LP = 1e-30;
+	}
+	auto start1 = high_resolution_clock::now();
+	double macro{0}, micro_advec{0}, micro_diff{0};
+
+	int n = 1;			   // label of output file
+	int inter_n{0};		   // The interation of outer loop of Newton-raphoon method
+	double total_flow = 0; // accumulation production
+	string outputfilename(to_string(Sw_om));
+	ofstream outfile("apparent_Permeability_amgx_OM1_Sw" + outputfilename + "_.txt", ios::app); // output permeability;
 
 	Flag_eigen = false;
+	Flag_intri_per = false;
+	Flag_Hybrid = false;
+	Function_DS(inlet_pre + refer_pressure);
 	memory();
 	Paramentinput();
 	initial_condition();
-	para_cal(1);
-	Matrix_permeability(1);
+	Para_cal_REV();
+	Matrix_per_REV();
 
-	auto start1 = high_resolution_clock::now();
-	double macro{0}, micro_advec{0}, micro_diff{0};
 	// begin AMGX initialization
 	AMGX_initialize();
 
 	AMGX_config_handle config;
-	AMGX_config_create_from_file(&config, "/root/autodl-tmp/amgx/AMGX/build/configs/core/FGMRES_AGGREGATION.json");
-	// AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/FGMRES_AGGREGATION.json");
+	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/1.json"); // for 505050
+	// AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/AMG_CLASSICAL_AGGRESSIVE_CHEB_L1_TRUNC"); // for lager
 
 	AMGX_resources_handle rsrc;
 	AMGX_resources_create_simple(&rsrc, config);
@@ -5796,16 +5673,115 @@ void PNMsolver::AMGX_permeability_solver(double mode)
 	// end AMGX initialization
 
 	// ************ begin AMGX solver ************
-	AMGXsolver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+	AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+	for (size_t i = 2; i < 52; i++)
+	{
+		Para_cal_REV_newton();
+		Matrix_per_REV();
+		AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+		inter_n = 0;
+		do
+		{
+			Para_cal_REV_newton();
+			Matrix_per_REV();
+			AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
+			inter_n++;
+			cout << "Inf_norm = " << norm_inf << "\t\t"
+				 << "inner loop = " << inter_n
+				 << "\t\t" << endl;
+		} while (norm_inf > eps_per);
+		// output(i, 1);
+
+		macro = macro_outlet_Q();
+		micro_advec = micro_outlet_advec_Q();
+
+		auto stop2 = high_resolution_clock::now();
+		auto duration2 = duration_cast<milliseconds>(stop2 - start1);
+
+		outfile << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << "\t"
+				<< (inlet_pre + refer_pressure) / 1e6
+				<< endl;
+		refer_pressure = i * 1e6;
+		Function_DS(inlet_pre + refer_pressure);
+		initial_condition();
+	}
+	outfile << "K_OM_HP = " << K_OM_HP << " K_Clay = " << K_Clay << "K_OM_LP = " << K_OM_LP;
+	outfile.close();
+
+	/***********************销毁AMGX***************************/
+	AMGX_unpin_memory(ia);
+	AMGX_unpin_memory(ja);
+	AMGX_unpin_memory(a);
+	AMGX_unpin_memory(B);
+	AMGX_unpin_memory(dX);
+
+	AMGX_solver_destroy(solver);
+	AMGX_vector_destroy(b_amgx);
+	AMGX_vector_destroy(solution_amgx);
+	AMGX_matrix_destroy(A_amgx);
+	AMGX_resources_destroy(rsrc);
+	AMGX_config_destroy(config);
+	AMGX_finalize();
+	// ************ end AMGX solver ************
+}
+
+void PNMsolver::AMGX_permeability_solver(double mode)
+{
+	refer_pressure = 0;
+	double start = omp_get_wtime();
+	double macro{0}, micro_advec{0}, micro_diff{0};
+
+	int n = 1;											 // label of output file
+	double total_flow = 0;								 // accumulation production
+	ofstream outfile("Intrinsic_permeability_amgx.txt"); // output permeability;
+
+	Flag_eigen = false;
+	Flag_intri_per = true;
+	memory();
+	Paramentinput();
+	initial_condition();
+	para_cal(1);
+	Matrix_permeability(1);
+	// CSR2COO();
+
+	// begin AMGX initialization
+	AMGX_initialize();
+
+	AMGX_config_handle config;
+	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/FGMRES_AGGREGATION.json");
+
+	AMGX_resources_handle rsrc;
+	AMGX_resources_create_simple(&rsrc, config);
+
+	AMGX_solver_handle solver;
+	AMGX_matrix_handle A_amgx;
+	AMGX_vector_handle b_amgx;
+	AMGX_vector_handle solution_amgx;
+
+	AMGX_solver_create(&solver, rsrc, AMGX_mode_dDDI, config);
+	AMGX_matrix_create(&A_amgx, rsrc, AMGX_mode_dDDI);
+	AMGX_vector_create(&b_amgx, rsrc, AMGX_mode_dDDI);
+	AMGX_vector_create(&solution_amgx, rsrc, AMGX_mode_dDDI);
+
+	int n_amgx = op + mp;
+	int nnz_amgx = ia[op + mp];
+	AMGX_pin_memory(ia, (n_amgx + 1) * sizeof(int));
+	AMGX_pin_memory(ja, nnz_amgx * sizeof(int));
+	AMGX_pin_memory(a, nnz_amgx * sizeof(double));
+	AMGX_pin_memory(B, sizeof(double) * n_amgx);
+	AMGX_pin_memory(dX, sizeof(double) * n_amgx);
+
+	// end AMGX initialization
+	// ************ begin AMGX solver ************
+	AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 
 	macro = macro_outlet_Q();
 	micro_advec = micro_outlet_advec_Q();
 
-	auto stop2 = high_resolution_clock::now();
-	auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-
-	outfile << "amgx = " << duration2.count() / 1000 << "\t"
-			<< "permeability = " << (macro + micro_advec) * visco(inlet_pre, compre(inlet_pre), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) << endl;
+	double end = omp_get_wtime();
+	outfile << "permeability = " << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << " nD" << "\t"
+			<< "pressure = " << inlet_pre + refer_pressure << " Pa" << "\t"
+			<< "solve time = " << end - start << " s" << endl;
 	output(1, 1);
 	outfile.close();
 
@@ -5828,12 +5804,6 @@ void PNMsolver::AMGX_permeability_solver(double mode)
 
 int main(int argc, char **argv)
 {
-	argc = 1;
-	char *name = "Project";
-	argv = &name;
-	int myid, ierr;
-	int error = 0;
-
 	char *buf;
 	buf = get_current_dir_name();
 	folderPath.assign(buf);
@@ -5842,17 +5812,12 @@ int main(int argc, char **argv)
 	PNMsolver Berea;
 	/*产气模拟*/
 	// Berea.Eigen_solver();
-	// Berea.mumps_solver(myid);
 	// Berea.AMGXsolver();
-	// Berea.AMGXsplver_REV();
+	Berea.AMGX_solver_REV();
 	/*渗透率计算*/
-	// Berea.Eigen_solver_per();
-	// Berea.mumps_permeability_solver(myid);
-	Berea.AMGX_permeability_solver(1);
-	// Berea.Intrinsic_permeability(myid); //各种直接法 解线性方程组
-	// Berea.Mysolver_for_Appermeability();
-	// Berea.Mysolver_for_inpermeability();
-
+	// Berea.Eigen_solver_per(1);
+	// Berea.AMGX_permeability_solver(1);
+	// Berea.AMGX_solver_apparent_permeability_REV();
 	// for (size_t i = 1; i < 51; i++)
 	// {
 	// 	Berea.Function_DS(i * 1e6);
