@@ -42,6 +42,7 @@
 #include "badiff.h"
 
 #define OMP_PARA 20
+#define PE "kong_pe_1";
 using namespace std;
 using namespace std::chrono;
 using namespace fadbad;
@@ -83,10 +84,10 @@ namespace Fluid_property
 
 	namespace kong
 	{
-		double D_dispersion_macro{2e-6};
+		double D_dispersion_macro{1e-9 * 237.885 / 100}; // 237.885 / 100 for 1st,  233.65 / 100 for 2nd, 396.055 / 100 for 3rd.
 		double D_dispersion_micro{0.05 * D_dispersion_macro};
-		double inlet_co2_mole_frac = 0.9;
-		double outlet_co2_mole_farc = 0.1;
+		double inlet_co2_mole_frac = 1;
+		double outlet_co2_mole_farc = 0;
 		double viscosity = 2e-5;
 	}
 }
@@ -94,7 +95,7 @@ namespace Fluid_property
 namespace Porous_media_property_Hybrid
 {
 	double porosity = 0.1; // 孔隙率
-	double ko = 12.3e-21;  // 微孔达西渗透率 m^2
+	double ko = 1e-15;	   // 微孔达西渗透率 m^2
 	double micro_radius{3.48e-9};
 }
 
@@ -136,9 +137,9 @@ namespace Porous_media_property_PNM
 
 namespace Physical_property
 {
-	double inlet_pre = 200;				 // 进口压力 Pa
-	double outlet_pre = inlet_pre - 100; // 出口压力 Pa
-	double Temperature{400};			 // 温度
+	double inlet_pre = 100;	 // 进口压力 Pa
+	double outlet_pre = 0;	 // 出口压力 Pa
+	double Temperature{400}; // 温度
 	double refer_pressure{0};
 }
 
@@ -151,12 +152,12 @@ namespace Solver_property
 	double pyhsic_time{0};
 	double machine_time{0};
 	int Flag_eigen{true};
-	int Flag_intri_per{true};
 	int Flag_Hybrid{true};
 	int flag = 2;
 	int flag1 = 2;
 
 	std::string folderPath;
+	std::string Gfilename("Pe_100");
 
 	int pn = 1; // 505050不联通 sample3  r=2
 	int tn = 1;
@@ -326,7 +327,7 @@ private:
 	double error;
 	int time_step = Time_step;
 	double time_all = pyhsic_time;
-	double dt = 1e-5;
+	double dt = 1e-2;
 	double dt2 = 1e-8; // 与dt初值相同，用于输出结果文件
 	double Q_outlet_macro{0};
 	double Q_outlet_free_micro{0};
@@ -390,7 +391,6 @@ private:
 	reverse_mode<double> conductivity_co2_DISPERSION_kong(reverse_mode<double> &Pi, reverse_mode<double> *Pjs, reverse_mode<double> &Wi, reverse_mode<double> *Wjs, int pore_id, int throat_id);
 
 	void para_cal_kong();
-	void para_cal_in_newton_kong();
 
 	double compre(double pressure); // 压缩系数
 	double visco(double pressure, double z, double T);
@@ -418,11 +418,14 @@ private:
 	void AMGXsolver_subroutine_kong(AMGX_matrix_handle &A_amgx, AMGX_vector_handle &b_amgx, AMGX_vector_handle &solution_amgx, AMGX_solver_handle &solver, int n_amgx, int nnz_amgx);
 
 	double macro_outlet_flow();		 // 出口大孔流量
+	double macro_outlet_Q();		 // 出口大孔流量
 	double micro_outlet_free_flow(); // 出口微孔流量
 	double micro_outlet_ad_flow();	 // 出口吸附量
-	double macro_outlet_Q();		 // 出口大孔流量
 	double micro_outlet_advec_Q();	 // 出口微孔流量
 	double micro_outlet_diff_Q();	 // 出口吸附量
+	double average_outlet_concentration();
+
+	double Peclet_number();
 
 	double macro_mass_loss();
 	double micro_free_mass_loss();
@@ -443,7 +446,7 @@ public:
 void PNMsolver::output_co2_methane(int n)
 {
 	ostringstream name;
-	name << "CO2_mehante_" << int(n + 1) << ".vtk";
+	name << "CO2_mehante_" + Gfilename + "_" << int(n + 1) << ".vtk";
 	ofstream outfile(name.str().c_str());
 	outfile << "# vtk DataFile Version 2.0" << endl;
 	outfile << "output.vtk" << endl;
@@ -2714,6 +2717,8 @@ double PNMsolver::Function_Slip_clay(double knusen)
 	return Slip_c;
 }
 
+#include <string>
+
 void PNMsolver::AMGX_solver_C_kong_PNM()
 {
 	Flag_eigen = false;
@@ -2724,8 +2729,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM()
 	int n{1};
 	int inter_n{0};							// The interation of outer loop of Newton-raphoon method
 	double total_flow = 0;					// accumulation production
-	ofstream outfile("kong.txt", ios::app); // output permeability;
-
+	ofstream outfile(Gfilename, ios::app); // output permeability;
 	memory();
 	Paramentinput();
 	if (time_step != 0)
@@ -2773,24 +2777,12 @@ void PNMsolver::AMGX_solver_C_kong_PNM()
 	outfile << "inner loop = " << inter_n << "\t"
 			<< "machine_time = " << duration3.count() / 1000 + machine_time << "\t"
 			<< "physical_time = " << time_all << "\t"
+			<< "dimensionless_time = " << time_all / ((900 * voxel_size) / ((macro_outlet_Q() + micro_outlet_advec_Q()) / (pi * pow(1170 * voxel_size, 2) / 4))) << "\t"
 			<< "dt = " << dt << "\t"
-			<< "Q_outlet_macro = " << Q_outlet_macro << "\t"
-			<< "Q_outlet_free_micro = " << Q_outlet_free_micro << "\t"
-			<< "Q_outlet_ad_micro = " << Q_outlet_ad_micro << "\t"
-			<< "total_out_flow = " << Q_outlet_macro + Q_outlet_free_micro + Q_outlet_ad_micro << "\t"
-			<< "total_mass_loss = " << free_macro_loss + free_micro_loss + ad_micro_loss << "\t"
-			<< "mass_conservation_error = " << 0 << "\t"
-			<< "macro_loss = " << free_macro_loss << "\t"
-			<< "free_micro_loss = " << free_micro_loss << "\t"
-			<< "ad_micro_loss = " << ad_micro_loss << "\t"
-			<< "acu_flow_macro = " << acu_flow_macro << "\t"
-			<< "acu_free_micro = " << acu_free_micro << "\t"
-			<< "acu_ad_micro = " << acu_ad_micro << "\t"
-			<< "total_flow / total_p = " << total_flow / total_p << "\t"
-			<< "acu_flow_macro / total_p = " << acu_flow_macro / total_p << "\t"
-			<< "acu_flow_micro / total_p = " << acu_free_micro / total_p << "\t"
-			<< "acu_ad_micro / total_p = " << acu_ad_micro / total_p << "\t"
+			<< "Peclet = " << Peclet_number() << "\t"
+			<< "average_outlet_c = " << average_outlet_concentration() << "\t"
 			<< endl;
+
 	output_co2_methane(time_step - 1); // 初始状态
 	// end AMGX initialization
 	// ************ begin AMGX solver ************
@@ -2818,29 +2810,12 @@ void PNMsolver::AMGX_solver_C_kong_PNM()
 		auto stop2 = high_resolution_clock::now();
 		auto duration2 = duration_cast<milliseconds>(stop2 - start1);
 		outfile << "inner loop = " << inter_n << "\t"
-				<< "machine_time = " << duration2.count() / 1000 + machine_time << "\t"
+				<< "machine_time = " << duration3.count() / 1000 + machine_time << "\t"
 				<< "physical_time = " << time_all << "\t"
 				<< "dt = " << dt << "\t"
-				<< "Q_outlet_macro = " << Q_outlet_macro << "\t"
-				<< "Q_outlet_free_micro = " << Q_outlet_free_micro << "\t"
-				<< "Q_outlet_ad_micro = " << Q_outlet_ad_micro << "\t"
-				<< "total_out_flow = " << Q_outlet_macro + Q_outlet_free_micro + Q_outlet_ad_micro << "\t"
-
-				<< "total_mass_loss = " << free_macro_loss + free_micro_loss + ad_micro_loss << "\t"
-
-				<< "mass_conservation_error = " << abs(Q_outlet_macro + Q_outlet_free_micro + Q_outlet_ad_micro - abs(free_macro_loss + free_micro_loss + ad_micro_loss)) / (free_macro_loss + free_micro_loss + ad_micro_loss) << "\t"
-				<< "macro_loss = " << free_macro_loss << "\t"
-				<< "free_micro_loss = " << free_micro_loss << "\t"
-				<< "ad_micro_loss = " << ad_micro_loss << "\t"
-
-				<< "acu_flow_macro = " << acu_flow_macro << "\t"
-				<< "acu_free_micro = " << acu_free_micro << "\t"
-				<< "acu_ad_micro = " << acu_ad_micro << "\t"
-				<< "total_flow / total_p = " << total_flow / total_p << "\t"
-				<< "acu_flow_macro / total_sub-resolution poresp = " << acu_flow_macro / total_p << "\t"
-				<< "acu_flow_micro / total_p = " << acu_free_micro / total_p << "\t"
-				<< "acu_ad_micro / total_p = " << acu_ad_micro / total_p << "\t"
-				<< "eps = " << eps << "\t"
+				<< "dimensionless_time = " << time_all / ((900 * voxel_size) / ((macro_outlet_Q() + micro_outlet_advec_Q()) / (pi * pow(1170 * voxel_size, 2) / 4))) << "\t"
+				<< "Peclet = " << Peclet_number() << "\t"
+				<< "average_outlet_c = " << average_outlet_concentration() << "\t"
 				<< endl;
 
 		for (int i = 0; i < pn; i++)
@@ -2849,15 +2824,15 @@ void PNMsolver::AMGX_solver_C_kong_PNM()
 			Pb[i].mole_frac_co2_old = Pb[i].mole_frac_co2;
 		}
 
-		// if (inter_n < 5)
-		// {
-		// 	dt = dt * 2;
-		// }
+		if (inter_n < 10 && dt < 0.5)
+		{
+			dt = dt * 2;
+		}
 
 		output_co2_methane(time_step);
 
 		time_step++;
-	} while (true);
+	} while (average_outlet_concentration() < 0.99);
 	output_co2_methane(time_step);
 	outfile.close();
 	auto stop1 = high_resolution_clock::now();
@@ -2895,7 +2870,7 @@ void PNMsolver::AMGX_solver_CO2_methane()
 	int n{1};
 	int inter_n{0};								   // The interation of outer loop of Newton-raphoon method
 	double total_flow = 0;						   // accumulation production
-	ofstream outfile("CO2_methane.txt", ios::app); // output permeability;
+	ofstream outfile("CO2_methane_Pe_1.txt", ios::app); // output permeability;
 
 	Function_DS(inlet_pre + refer_pressure);
 	memory();
@@ -3276,31 +3251,31 @@ void PNMsolver::initial_condition()
 
 	for (int i = 0; i < pn; i++)
 	{
-		Pb[i].mole_frac_co2 = 0.01; //- double(double(i) / double(pn) * 100)
+		Pb[i].mole_frac_co2 = kong::outlet_co2_mole_farc; //- double(double(i) / double(pn) * 100)
 		Pb[i].mole_frac_co2_old = Pb[i].mole_frac_co2;
 	}
 
 	for (int i = 0; i < inlet; i++)
 	{
-		Pb[i].mole_frac_co2 = 0.99; //- double(double(i) / double(pn) * 100)
+		Pb[i].mole_frac_co2 = kong::inlet_co2_mole_frac; //- double(double(i) / double(pn) * 100)
 		Pb[i].mole_frac_co2_old = Pb[i].mole_frac_co2;
 	}
 
 	for (int i = macro_n; i < macro_n + m_inlet; i++)
 	{
-		Pb[i].mole_frac_co2 = 0.99; //- double(double(i) / double(pn) * 100)
+		Pb[i].mole_frac_co2 = kong::inlet_co2_mole_frac; //- double(double(i) / double(pn) * 100)
 		Pb[i].mole_frac_co2_old = Pb[i].mole_frac_co2;
 	}
 
 	for (int i = macro_n - outlet; i < macro_n; i++)
 	{
-		Pb[i].mole_frac_co2 = 0.01;
-		Pb[i].mole_frac_co2_old = 0.01;
+		Pb[i].mole_frac_co2 = kong::outlet_co2_mole_farc;
+		Pb[i].mole_frac_co2_old = Pb[i].mole_frac_co2;
 	}
 	for (int i = pn - m_outlet; i < pn; i++)
 	{
-		Pb[i].mole_frac_co2 = 0.01;
-		Pb[i].mole_frac_co2_old = 0.01;
+		Pb[i].mole_frac_co2 = kong::outlet_co2_mole_farc;
+		Pb[i].mole_frac_co2_old = Pb[i].mole_frac_co2;
 	}
 	double end = omp_get_wtime();
 	printf("initial_condition start = %.16g\tend = %.16g\tdiff = %.16g\n",
@@ -4543,14 +4518,15 @@ double PNMsolver::micro_outlet_ad_flow()
 
 double PNMsolver::macro_outlet_Q()
 {
-	// ofstream out_flux("out_flux.txt");
 	double Q_outlet = 0;
 	for (int i = macro_n - outlet; i < macro_n; i++)
 	{
-		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
+		for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++)
 		{
-			Q_outlet += (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * Tb[j].Conductivity; // 体积流量
-																								  // out_flux << abs(Q_outlet) << ";" << 1 << ";" << i << ";" << Pb[Tb[j].ID_1].pressure << ";" << Pb[Tb[j].ID_2].pressure << ";" << Tb[j].Conductivity << ";" << Pb[Tb[j].ID_1].Radiu << ";" << Pb[Tb[j].ID_2].Radiu << ";" << Tb[j].Radiu << ";" << Tb_in[j].Length << endl;
+			reverse_mode<double> Pi, Wi;
+			reverse_mode<double> *Pjs;
+			reverse_mode<double> *Wjs;
+			Q_outlet += (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val(); // 体积流量
 		}
 	}
 	return abs(Q_outlet);
@@ -4561,9 +4537,12 @@ double PNMsolver::micro_outlet_advec_Q()
 	double Q_outlet = 0;
 	for (int i = pn - m_outlet; i < pn; i++)
 	{
-		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
+		reverse_mode<double> Pi, Wi;
+		reverse_mode<double> *Pjs;
+		reverse_mode<double> *Wjs;
+		for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++)
 		{
-			Q_outlet += (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * Tb[j].Conductivity; // 体积流量
+			Q_outlet += (Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val(); // 体积流量
 		}
 	}
 	return abs(Q_outlet);
@@ -4571,7 +4550,6 @@ double PNMsolver::micro_outlet_advec_Q()
 
 double PNMsolver::micro_outlet_diff_Q()
 {
-	// ofstream out_flux("out_flux.txt",ios::app);
 	double Q_outlet = 0;
 	for (int i = pn - m_outlet; i < pn; i++)
 	{
@@ -4580,10 +4558,32 @@ double PNMsolver::micro_outlet_diff_Q()
 			double average_density = ((Pb[Tb[j].ID_1].pressure + refer_pressure) / (Pb[Tb[j].ID_1].compre * 8.314 * Temperature) + (Pb[Tb[j].ID_2].pressure + refer_pressure) / (Pb[Tb[j].ID_2].compre * 8.314 * Temperature)) / 2;
 			Q_outlet += Tb[j].Surface_diff_conduc * (K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_1].pressure + refer_pressure)) - K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure) / (1 + K_langmuir * (Pb[Tb[j].ID_2].pressure + refer_pressure))) / (average_density * 16e-3); // 体积流量
 		}
-		// out_flux << abs(Q_outlet) << endl;
 	}
 	return abs(Q_outlet);
 }; // 出口吸附量
+
+double PNMsolver::Peclet_number()
+{
+	double Peclet{0};
+	Peclet = macro_outlet_Q() + micro_outlet_advec_Q();
+	Peclet = Peclet * (900 * voxel_size) / (kong::D_dispersion_macro * (pi * pow(1170 * voxel_size, 2) / 4));
+	return Peclet;
+}
+
+double PNMsolver::average_outlet_concentration()
+{
+	double average_c = 0;
+	for (int i = macro_n - outlet; i < macro_n; i++)
+	{
+		average_c += Pb[i].mole_frac_co2;
+	}
+
+	for (int i = pn - m_outlet; i < pn; i++)
+	{
+		average_c += Pb[i].mole_frac_co2;
+	}
+	return abs(average_c / double(outlet + m_outlet) / inlet_co2_mole_frac);
+}
 
 double PNMsolver::macro_mass_loss()
 {
