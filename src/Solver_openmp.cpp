@@ -48,22 +48,22 @@ const double CLOCKS_PER_SECOND = ((clock_t)1000);
 double iters_globa{0};
 ////常量设置
 double pi = 3.1415927;
-double gas_vis = 2e-5;				 // 粘度
-double porosity = 0.05;				 // 孔隙率   含水改成0.05，不含水0.1
-double ko = 12.3e-21;				 // 微孔达西渗透率 m^2
-double inlet_pre = 100;				 // 进口压力 Pa
-double outlet_pre = inlet_pre - 100; // 出口压力 Pa
-double D = 9e-9;					 // 扩散系数
-double Effect_D = 0.05 * D;			 // 微孔中的有效扩散系数
-double voxel_size = 320e-9;			 // 像素尺寸，单位m    5.345e-6 8e-9 320e-9 for REV
-double domain_size_cubic = 384;		 // 384 for REV
-double T_critical{190.564};			 // 甲烷的临界温度 190.564K
-double P_critical{4.599 * 1e6};		 // 甲烷的临界压力 4.599MPa
-double Temperature{400};			 // 温度
-double Rho_ad{400};					 // kg/m3
-double n_max_ad{44.8};				 // kg/m3
-double K_langmuir{4e-8};			 // Pa^(-1)
-double Ds{2.46e-8};					 // m2/s
+double gas_vis = 2e-5;			// 粘度
+double porosity = 0.1;			// 孔隙率   含水改成0.05，不含水0.1
+double ko = 12.3e-21;			// 微孔达西渗透率 m^2
+double inlet_pre = 100;			// 进口压力 Pa
+double outlet_pre = 0;			// 出口压力 Pa
+double D = 9e-9;				// 扩散系数
+double Effect_D = 0.05 * D;		// 微孔中的有效扩散系数
+double voxel_size = 320e-9;		// 像素尺寸，单位m    5.345e-6 8e-9 320e-9 for REV
+double domain_size_cubic = 384; // 384 for REV
+double T_critical{190.564};		// 甲烷的临界温度 190.564K
+double P_critical{4.599 * 1e6}; // 甲烷的临界压力 4.599MPa
+double Temperature{400};		// 温度
+double Rho_ad{400};				// kg/m3
+double n_max_ad{44.8};			// kg/m3
+double K_langmuir{4e-8};		// Pa^(-1)
+double Ds{2.46e-8};				// m2/s
 double micro_radius{3.48e-9};
 
 double porosity_HP1{0.243};
@@ -103,6 +103,7 @@ int Time_step{0};
 int percentage_production_counter{1};
 double pyhsic_time{0};
 double machine_time{0};
+
 int Flag_eigen{true};
 int Flag_intri_per{true};
 int Flag_Hybrid{true};
@@ -118,6 +119,8 @@ int macro_n = inlet + op + outlet;
 int micro_n = m_inlet + mp + m_outlet;
 int para_macro = inlet + outlet + m_inlet;
 int NA = (tn - inlet - outlet - m_inlet - m_outlet) * 2 + (op + mp);
+
+int Mode{0};
 
 double getmax_2(double a, double b)
 {
@@ -269,6 +272,9 @@ public:
 	double norm_inf = 0;
 	double eps = 1e-5;	   // set residual for dx
 	double eps_per = 1e-3; // set residual for dx
+	int force_out = 20;
+	int double_time = 10;
+	double maximum_dt = 1e-1;
 
 	int iterations_number = 0;
 	// double total_p=2.75554e-8;
@@ -885,18 +891,8 @@ void PNMsolver::Para_cal_REV_newton()
 	}
 }
 
-void PNMsolver:: AMGX_solver_REV()
+void PNMsolver::AMGX_solver_REV()
 {
-	if (Sw_clay >= 0.95)
-	{
-		K_Clay = 1e-30;
-	}
-
-	if (Sw_om >= 0.95)
-	{
-		K_OM_HP = 1e-30;
-		K_OM_LP = 1e-30;
-	}
 	auto start1 = high_resolution_clock::now();
 	double acu_clay{0}, acu_fracture{0}, acu_ad_OM_HP{0}, acu_free_OM_HP{0}, acu_ad_OM_LP{0}, acu_free_OM_LP{0};
 
@@ -907,8 +903,13 @@ void PNMsolver:: AMGX_solver_REV()
 
 	Flag_eigen = false;
 	Flag_Hybrid = false;
-	Function_DS(inlet_pre + refer_pressure);
 	memory();
+	if (refer_pressure < 0.0001)
+	{
+		refer_pressure = 1e6;
+	}
+	
+	Function_DS(inlet_pre + refer_pressure);
 	Paramentinput();
 	if (time_step != 0)
 	{
@@ -928,7 +929,7 @@ void PNMsolver:: AMGX_solver_REV()
 	AMGX_initialize();
 
 	AMGX_config_handle config;
-	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/FGMRES_AGGREGATION.json"); // 200
+	AMGX_config_create_from_file(&config, "solver.json"); // 200
 
 	AMGX_resources_handle rsrc;
 	AMGX_resources_create_simple(&rsrc, config);
@@ -1008,7 +1009,7 @@ void PNMsolver:: AMGX_solver_REV()
 				 << "\t\t"
 				 << "outer loop = " << time_step + 1 << endl;
 			cout << endl;
-		} while (norm_inf > eps);
+		} while (norm_inf > eps && inter_n < force_out);
 
 		time_all += dt;
 		acu_clay = 0;
@@ -1125,7 +1126,7 @@ void PNMsolver:: AMGX_solver_REV()
 			Pb[i].compre_old = Pb[i].compre;
 		}
 
-		if (inter_n <= 100 && dt < 1e-1)
+		if (inter_n <= double_time && dt < maximum_dt)
 		{
 			dt = dt * 2;
 		}
@@ -1679,51 +1680,51 @@ void PNMsolver::memory()
 				flag = true;
 			}
 			string sline;
-			string shead = "=";
-			string sshead = ",";
-			string ssshead = ";";
-			string::size_type idx{0};
-			string::size_type idx1{0};
-			string::size_type idx2{0};
+			string eq_head = "=";
+			string dot_head = ",";
+			string mao_head = ";";
+			string::size_type eq_idx{0};
+			string::size_type dot_idx{0};
+			string::size_type mao_idx{0};
 			vector<int> iputings;
 			getline(files, sline);
-			assert(idx2 = sline.find(ssshead) != string::npos);
-			while ((idx = sline.find(shead, idx)) != string::npos && (idx1 = sline.find(sshead, idx1)) != string::npos)
+			assert(mao_idx = sline.find(mao_head) != string::npos);
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos && (dot_idx = sline.find(dot_head, dot_idx)) != string::npos)
 			{
-				istringstream ss(sline.substr(idx + 1, idx1 - idx - 1));
+				istringstream ss(sline.substr(eq_idx + 1, dot_idx - eq_idx - 1));
 				int ii;
 				ss >> ii;
 				iputings.push_back(ii);
-				idx++;
-				idx1++;
+				eq_idx++;
+				dot_idx++;
 			}
-			istringstream ss(sline.substr(idx + 1, idx2 - idx - 1));
+			istringstream ss(sline.substr(eq_idx + 1, mao_idx - eq_idx - 1));
 			int ii;
 			ss >> ii;
 			iputings.push_back(ii);
 
 			getline(files, sline);
 			getline(files, sline);
-			idx = 0;
-			idx1 = 0;
-			while ((idx = sline.find(shead, idx)) != string::npos && (idx1 = sline.find("\t", idx1)) != string::npos)
+			eq_idx = 0;
+			dot_idx = 0;
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos && (dot_idx = sline.find("\t", dot_idx)) != string::npos)
 			{
-				istringstream ss(sline.substr(idx + 1, idx1 - idx - 1));
+				istringstream ss(sline.substr(eq_idx + 1, dot_idx - eq_idx - 1));
 				int ii;
 				ss >> ii;
 				iputings.push_back(ii);
-				idx++;
-				idx1++;
+				eq_idx++;
+				dot_idx++;
 			}
 
-			while ((idx = sline.find(shead, idx)) != string::npos)
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos)
 			{
-				istringstream ss(sline.substr(idx + 1));
+				istringstream ss(sline.substr(eq_idx + 1));
 				int ii;
 				ss >> ii;
 				iputings.push_back(ii);
-				idx++;
-				idx1++;
+				eq_idx++;
+				dot_idx++;
 			}
 
 			int num = int(iputings[0]);
@@ -1742,6 +1743,112 @@ void PNMsolver::memory()
 			pn = num;
 			num = int(iputings[7]);
 			tn = num;
+
+			getline(files, sline);
+			getline(files, sline);
+			getline(files, sline);
+			getline(files, sline);
+			eq_idx = 0;
+			dot_idx = 0;
+			int iCounter{0};
+			vector<double> oo;
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos && (dot_idx = sline.find(mao_head, dot_idx)) != string::npos)
+			{
+				istringstream ss(sline.substr(eq_idx + 1, dot_idx - eq_idx - 1));
+				double ii;
+				ss >> ii;
+ 				oo.push_back(ii);
+				eq_idx = 0;
+				dot_idx = 0;
+				getline(files, sline);
+			}
+
+			eq_idx = 0;
+			dot_idx = 0;
+			getline(files, sline);
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos && (dot_idx = sline.find(mao_head, dot_idx)) != string::npos)
+			{
+				istringstream ss(sline.substr(eq_idx + 1, dot_idx - eq_idx - 1));
+				double ii;
+				ss >> ii;
+ 				oo.push_back(ii);
+				eq_idx = 0;
+				dot_idx = 0;
+				getline(files, sline);
+			}
+
+			eq_idx = 0;
+			dot_idx = 0;
+			getline(files, sline);
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos && (dot_idx = sline.find(mao_head, dot_idx)) != string::npos)
+			{
+				istringstream ss(sline.substr(eq_idx + 1, dot_idx - eq_idx - 1));
+				double ii;
+				ss >> ii;
+ 				oo.push_back(ii);
+				eq_idx = 0;
+				dot_idx = 0;
+				getline(files, sline);
+			}
+
+			eq_idx = 0;
+			dot_idx = 0;
+			getline(files, sline);
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos && (dot_idx = sline.find(mao_head, dot_idx)) != string::npos)
+			{
+				istringstream ss(sline.substr(eq_idx + 1, dot_idx - eq_idx - 1));
+				double ii;
+				ss >> ii;
+ 				oo.push_back(ii);
+				eq_idx = 0;
+				dot_idx = 0;
+				getline(files, sline);
+			}
+
+			inlet_pre = oo[0];
+			outlet_pre = oo[1];
+			refer_pressure = oo[2];
+			voxel_size = oo[3];
+			domain_size_cubic = oo[4];
+			dt=oo[5];
+
+			porosity = oo[6];
+			ko=oo[7];
+			micro_radius=oo[8];
+			porosity_HP1=oo[9];
+			porosity_LP1=oo[10];
+			porosity_clay1=oo[11];
+			micro_porosity_HP=oo[12];
+			micro_porosity_LP=oo[13];
+			micro_porosity_Clay=oo[14];
+			L_CLAY=oo[15];
+			L_OM_1=oo[16];
+			L_OM_2=oo[17];
+			swww_clay=oo[18];
+			swww_om=oo[19];
+
+			eps = oo[20];
+			maximum_dt = oo[21];
+			force_out = int(oo[22]);
+			double_time = oo[23];
+			if (Sw_clay >= 0.95)
+			{
+				K_Clay = 1e-30;
+			}
+		
+			if (Sw_om >= 0.95)
+			{
+				K_OM_HP = 1e-30;
+				K_OM_LP = 1e-30;
+			}
+			a_OMLP = 2e-21 / pow(Sw_max_OMLP, 2);
+			K_OM_LP = a_OMLP * pow(Sw_OMLP - Sw_max_OMLP, 2);
+		
+			a_om = (700e-21) / pow(Sw_max_om, 2);
+			K_OM_HP = a_om * pow(Sw_om - Sw_max_om, 2);
+		
+			a_clay = 2e-22 / pow(Sw_max_clay, 6);
+			K_Clay = a_clay * pow(Sw_clay - Sw_max_clay, 6);
 		}
 	}
 
@@ -3330,13 +3437,13 @@ void PNMsolver::output(int n, bool m)
 
 void PNMsolver::output(int n, int m)
 {
-	ofstream main_path_macro("main_path_macro.txt");
-	ofstream main_path_micro("main_path_micro.txt");
-	ofstream main_path_double("main_path_double.txt");
+	// ofstream main_path_macro("main_path_macro.txt");
+	// ofstream main_path_micro("main_path_micro.txt");
+	// ofstream main_path_double("main_path_double.txt");
 
-	ofstream sub_path_macro("sub_path_macro.txt");
-	ofstream sub_path_micro("sub_path_micro.txt");
-	ofstream sub_path_double("sub_path_double.txt");
+	// ofstream sub_path_macro("sub_path_macro.txt");
+	// ofstream sub_path_micro("sub_path_micro.txt");
+	// ofstream sub_path_double("sub_path_double.txt");
 	ofstream flux("flux.txt");
 	vector<double> macro_fluxes;
 	vector<double> micro_fluxes;
@@ -3472,32 +3579,32 @@ void PNMsolver::output(int n, int m)
 		if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n && kkk >= thred1) // 大孔 主通道
 		{
 			Tb[i].main_free = int(0);
-			main_path_macro << Tb[i].ID_1 << "\t" << Pb[Tb[i].ID_1].Radiu << "\t" << Tb[i].ID_2 << "\t" << Pb[Tb[i].ID_2].Radiu << endl;
+			// main_path_macro << Tb[i].ID_1 << "\t" << Pb[Tb[i].ID_1].Radiu << "\t" << Tb[i].ID_2 << "\t" << Pb[Tb[i].ID_2].Radiu << endl;
 		}
 		else if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n && kkk < thred1) // 大孔 次通道
 		{
 			Tb[i].main_free = int(3);
-			sub_path_macro << i << ";" << kkk << endl;
+			// sub_path_macro << i << ";" << kkk << endl;
 		}
 		else if (Tb[i].ID_1 >= macro_n && Tb[i].ID_2 >= macro_n && kkk >= thred2) // 微孔主通道
 		{
 			Tb[i].main_free = int(1);
-			main_path_micro << i << ";" << kkk << endl;
+			// main_path_micro << i << ";" << kkk << endl;
 		}
 		else if (Tb[i].ID_1 >= macro_n && Tb[i].ID_2 >= macro_n && kkk < thred2) // 微孔 次通道
 		{
 			Tb[i].main_free = int(4);
-			sub_path_micro << i << ";" << kkk << endl;
+			// sub_path_micro << i << ";" << kkk << endl;
 		}
 		else if (((Tb[i].ID_1 < macro_n && Tb[i].ID_2 >= macro_n) || (Tb[i].ID_1 > macro_n && Tb[i].ID_2 <= macro_n)) && kkk >= thred2) // 连接主
 		{
 			Tb[i].main_free = int(2);
-			main_path_double << i << ";" << kkk << endl;
+			// main_path_double << i << ";" << kkk << endl;
 		}
 		else if (((Tb[i].ID_1 < macro_n && Tb[i].ID_2 >= macro_n) || (Tb[i].ID_1 > macro_n && Tb[i].ID_2 <= macro_n)) && kkk < thred2) // 连接次
 		{
 			Tb[i].main_free = int(5);
-			sub_path_double << i << ";" << kkk << endl;
+			// sub_path_double << i << ";" << kkk << endl;
 		}
 	}
 
@@ -3575,12 +3682,12 @@ void PNMsolver::output(int n, int m)
 	}
 
 	outfile.close();
-	main_path_macro.close();
-	main_path_micro.close();
-	main_path_double.close();
-	sub_path_macro.close();
-	sub_path_micro.close();
-	sub_path_double.close();
+	// main_path_macro.close();
+	// main_path_micro.close();
+	// main_path_double.close();
+	// sub_path_macro.close();
+	// sub_path_micro.close();
+	// sub_path_double.close();
 }
 
 void PNMsolver::output(double n, double m)
@@ -3959,7 +4066,7 @@ void PNMsolver::Eigen_solver()
 				 << "\t\t"
 				 << "outer loop = " << time_step << endl;
 			cout << endl;
-		} while (norm_inf > eps);
+		} while (norm_inf > eps && inter_n < force_out);
 
 		time_all += dt;
 		acu_flow_macro = 0;
@@ -4025,7 +4132,7 @@ void PNMsolver::Eigen_solver()
 			Pb[i].compre_old = Pb[i].compre;
 		}
 
-		if (inter_n < 10)
+		if (inter_n < double_time && dt < maximum_dt)
 		{
 			dt = dt * 2;
 		}
@@ -4239,7 +4346,7 @@ void PNMsolver::AMGXsolver()
 	AMGX_initialize();
 
 	AMGX_config_handle config;
-	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/1.json"); // 200
+	AMGX_config_create_from_file(&config, "solver.json"); // 200
 
 	AMGX_resources_handle rsrc;
 	AMGX_resources_create_simple(&rsrc, config);
@@ -4306,7 +4413,7 @@ void PNMsolver::AMGXsolver()
 				 << "\t\t"
 				 << "outer loop = " << time_step + 1 << endl;
 			cout << endl;
-		} while (norm_inf > eps);
+		} while (norm_inf > eps && inter_n < force_out);
 
 		time_all += dt;
 		acu_flow_macro = 0;
@@ -4372,7 +4479,7 @@ void PNMsolver::AMGXsolver()
 			Pb[i].compre_old = Pb[i].compre;
 		}
 
-		if (inter_n < 10)
+		if (inter_n < double_time && dt < maximum_dt)
 		{
 			dt = dt * 2;
 		}
@@ -4919,6 +5026,8 @@ void PNMsolver::AMGX_permeability_solver()
 	Flag_intri_per = false;
 	Function_DS(inlet_pre + refer_pressure);
 	memory();
+
+	refer_pressure = 1e6;
 	Paramentinput();
 	initial_condition();
 	para_cal();
@@ -4928,8 +5037,7 @@ void PNMsolver::AMGX_permeability_solver()
 	AMGX_initialize();
 
 	AMGX_config_handle config;
-	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/FGMRES_AGGREGATION.json"); // for 505050
-	// AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/AMG_CLASSICAL_AGGRESSIVE_CHEB_L1_TRUNC"); // for lager
+	AMGX_config_create_from_file(&config, "solver.json"); // for 505050
 
 	AMGX_resources_handle rsrc;
 	AMGX_resources_create_simple(&rsrc, config);
@@ -5669,16 +5777,6 @@ void PNMsolver::Matrix_per_REV()
 
 void PNMsolver::AMGX_solver_apparent_permeability_REV()
 {
-	if (Sw_clay >= 0.95)
-	{
-		K_Clay = 1e-30;
-	}
-
-	if (Sw_om >= 0.95)
-	{
-		K_OM_HP = 1e-30;
-		K_OM_LP = 1e-30;
-	}
 	auto start1 = high_resolution_clock::now();
 	double macro{0}, micro_advec{0}, micro_diff{0};
 
@@ -5691,8 +5789,9 @@ void PNMsolver::AMGX_solver_apparent_permeability_REV()
 	Flag_eigen = false;
 	Flag_intri_per = false;
 	Flag_Hybrid = false;
-	Function_DS(inlet_pre + refer_pressure);
 	memory();
+	refer_pressure = 1e6;
+	Function_DS(inlet_pre + refer_pressure);
 	Paramentinput();
 	initial_condition();
 	Para_cal_REV();
@@ -5702,7 +5801,7 @@ void PNMsolver::AMGX_solver_apparent_permeability_REV()
 	AMGX_initialize();
 
 	AMGX_config_handle config;
-	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/1.json"); // for 505050
+	AMGX_config_create_from_file(&config, "solver.json"); // for 505050
 	// AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/AMG_CLASSICAL_AGGRESSIVE_CHEB_L1_TRUNC"); // for lager
 
 	AMGX_resources_handle rsrc;
@@ -5794,6 +5893,8 @@ void PNMsolver::AMGX_permeability_solver(double mode)
 	Flag_eigen = false;
 	Flag_intri_per = true;
 	memory();
+	refer_pressure=0;
+
 	Paramentinput();
 	initial_condition();
 	para_cal(1);
@@ -5804,7 +5905,7 @@ void PNMsolver::AMGX_permeability_solver(double mode)
 	AMGX_initialize();
 
 	AMGX_config_handle config;
-	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/FGMRES_AGGREGATION.json");
+	AMGX_config_create_from_file(&config, "solver.json");
 
 	AMGX_resources_handle rsrc;
 	AMGX_resources_create_simple(&rsrc, config);
@@ -5865,13 +5966,73 @@ int main(int argc, char **argv)
 	folderPath.assign(buf);
 	cout << folderPath << endl;
 
+	std::vector<std::string> fileList = getFilesInFolder(folderPath);
+	bool flag{false};
+	for (const auto &file : fileList)
+	{
+		if (file.find(string("voxels_number")) != string::npos)
+		{
+			ifstream files(file, ios::in);
+			if (files.is_open())
+			{
+				flag = true;
+			}
+			string sline;
+			string eq_head = "=";
+			string dot_head = ",";
+			string mao_head = ";";
+			string::size_type eq_idx{0};
+			string::size_type dot_idx{0};
+			string::size_type mao_idx{0};
+			vector<int> iputings;
+
+			getline(files, sline);
+			getline(files, sline);
+			getline(files, sline);
+			getline(files, sline);
+			getline(files, sline);
+			eq_idx = 0;
+			dot_idx = 0;
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos && (dot_idx = sline.find(mao_head, dot_idx)) != string::npos)
+			{
+				istringstream ss(sline.substr(eq_idx + 1, dot_idx - eq_idx - 1));
+				int ii;
+				ss >> ii;
+				iputings.push_back(ii);
+				eq_idx++;
+				dot_idx++;
+			}
+			Mode = iputings[0];
+		}
+	}
+
 	PNMsolver Berea;
 	// Berea.mean_pore_size();
+ 	switch (Mode)
+	{
+	case 1:
+		Berea.AMGXsolver();
+		break;
+	case 2:
+		Berea.AMGX_permeability_solver(1);
+		break;
+	case 3:
+		Berea.AMGX_permeability_solver();
+		break;
+	case 4:
+		Berea.AMGX_solver_REV();
+		break;
+	case 5:
+		Berea.AMGX_solver_apparent_permeability_REV();
+		break;
+	default:
+		break;
+	}
 
 	/*产气模拟*/
 	// Berea.Eigen_solver();
 	// Berea.AMGXsolver();
-	Berea.AMGX_solver_REV();
+	// Berea.AMGX_solver_REV();
 	/*渗透率计算*/
 	// Berea.Eigen_solver_per(1); // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
 	// Berea.AMGX_permeability_solver(1); // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算

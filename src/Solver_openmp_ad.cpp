@@ -2727,8 +2727,8 @@ void PNMsolver::AMGX_solver_C_kong_PNM()
 	double acu_flow_macro{0}, acu_free_micro{0}, acu_ad_micro{0};
 
 	int n{1};
-	int inter_n{0};							// The interation of outer loop of Newton-raphoon method
-	double total_flow = 0;					// accumulation production
+	int inter_n{0};						   // The interation of outer loop of Newton-raphoon method
+	double total_flow = 0;				   // accumulation production
 	ofstream outfile(Gfilename, ios::app); // output permeability;
 	memory();
 	Paramentinput();
@@ -2749,7 +2749,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM()
 	AMGX_initialize();
 
 	AMGX_config_handle config;
-	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/1.json"); // 200
+	AMGX_config_create_from_file(&config, "solver.json"); // 200
 
 	AMGX_resources_handle rsrc;
 	AMGX_resources_create_simple(&rsrc, config);
@@ -2868,8 +2868,8 @@ void PNMsolver::AMGX_solver_CO2_methane()
 	double acu_flow_macro{0}, acu_free_micro{0}, acu_ad_micro{0};
 
 	int n{1};
-	int inter_n{0};								   // The interation of outer loop of Newton-raphoon method
-	double total_flow = 0;						   // accumulation production
+	int inter_n{0};										// The interation of outer loop of Newton-raphoon method
+	double total_flow = 0;								// accumulation production
 	ofstream outfile("CO2_methane_Pe_1.txt", ios::app); // output permeability;
 
 	Function_DS(inlet_pre + refer_pressure);
@@ -2891,7 +2891,7 @@ void PNMsolver::AMGX_solver_CO2_methane()
 	AMGX_initialize();
 
 	AMGX_config_handle config;
-	AMGX_config_create_from_file(&config, "/home/rong/桌面/Mycode/lib/AMGX/build/configs/core/1.json"); // 200
+	AMGX_config_create_from_file(&config, "solver.json"); // 200
 
 	AMGX_resources_handle rsrc;
 	AMGX_resources_create_simple(&rsrc, config);
@@ -3144,51 +3144,51 @@ void PNMsolver::memory()
 				flag = true;
 			}
 			string sline;
-			string shead = "=";
-			string sshead = ",";
-			string ssshead = ";";
-			string::size_type idx{0};
-			string::size_type idx1{0};
-			string::size_type idx2{0};
+			string eq_head = "=";
+			string dot_head = ",";
+			string mao_head = ";";
+			string::size_type eq_idx{0};
+			string::size_type dot_idx{0};
+			string::size_type mao_idx{0};
 			vector<int> iputings;
 			getline(files, sline);
-			assert(idx2 = sline.find(ssshead) != string::npos);
-			while ((idx = sline.find(shead, idx)) != string::npos && (idx1 = sline.find(sshead, idx1)) != string::npos)
+			assert(mao_idx = sline.find(mao_head) != string::npos);
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos && (dot_idx = sline.find(dot_head, dot_idx)) != string::npos)
 			{
-				istringstream ss(sline.substr(idx + 1, idx1 - idx - 1));
+				istringstream ss(sline.substr(eq_idx + 1, dot_idx - eq_idx - 1));
 				int ii;
 				ss >> ii;
 				iputings.push_back(ii);
-				idx++;
-				idx1++;
+				eq_idx++;
+				dot_idx++;
 			}
-			istringstream ss(sline.substr(idx + 1, idx2 - idx - 1));
+			istringstream ss(sline.substr(eq_idx + 1, mao_idx - eq_idx - 1));
 			int ii;
 			ss >> ii;
 			iputings.push_back(ii);
 
 			getline(files, sline);
 			getline(files, sline);
-			idx = 0;
-			idx1 = 0;
-			while ((idx = sline.find(shead, idx)) != string::npos && (idx1 = sline.find("\t", idx1)) != string::npos)
+			eq_idx = 0;
+			dot_idx = 0;
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos && (dot_idx = sline.find("\t", dot_idx)) != string::npos)
 			{
-				istringstream ss(sline.substr(idx + 1, idx1 - idx - 1));
+				istringstream ss(sline.substr(eq_idx + 1, dot_idx - eq_idx - 1));
 				int ii;
 				ss >> ii;
 				iputings.push_back(ii);
-				idx++;
-				idx1++;
+				eq_idx++;
+				dot_idx++;
 			}
 
-			while ((idx = sline.find(shead, idx)) != string::npos)
+  			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos)
 			{
-				istringstream ss(sline.substr(idx + 1));
+				istringstream ss(sline.substr(eq_idx + 1));
 				int ii;
 				ss >> ii;
 				iputings.push_back(ii);
-				idx++;
-				idx1++;
+				eq_idx++;
+				dot_idx++;
 			}
 
 			int num = int(iputings[0]);
@@ -3206,7 +3206,37 @@ void PNMsolver::memory()
 			num = int(iputings[6]);
 			pn = num;
 			num = int(iputings[7]);
-			tn = num;
+  			tn = num;
+
+			getline(files, sline);
+			getline(files, sline);
+			getline(files, sline);
+			getline(files, sline);
+			eq_idx = 0;
+			dot_idx = 0;
+			vector<double> oo;
+			while ((eq_idx = sline.find(eq_head, eq_idx)) != string::npos && (dot_idx = sline.find(mao_head, dot_idx)) != string::npos)
+			{
+				istringstream ss(sline.substr(eq_idx + 1, dot_idx - eq_idx - 1));
+				double ii;
+				ss >> ii;
+				oo.push_back(ii);
+				eq_idx = 0;
+				dot_idx = 0;
+				getline(files, sline);
+			}
+			kong::D_dispersion_macro = oo[0];
+			kong::D_dispersion_micro = oo[1];
+			porosity = oo[2];
+			ko=oo[3];
+			inlet_co2_mole_frac=oo[4];
+			outlet_co2_mole_farc=oo[5];
+			inlet_pre=oo[6];
+			outlet_pre=oo[7];
+			Temperature=oo[8];
+			refer_pressure=oo[9];
+			voxel_size=oo[10];
+			domain_size_cubic=oo[11];
 		}
 	}
 
@@ -4882,14 +4912,14 @@ void PNMsolver::Matrix_COO2CSR()
 };
 
 int main(int argc, char **argv)
-{
+ {
 	char *buf;
-	buf = get_current_dir_name();
+ 	buf = get_current_dir_name();
 	folderPath.assign(buf);
 	cout << folderPath << endl;
 
 	PNMsolver Solver;
-	// Solver.AMGX_solver_CO2_methane();
+	Solver.AMGX_solver_CO2_methane();
 	Solver.AMGX_solver_C_kong_PNM();
 	/*二氧化碳驱替甲烷*/
 }
