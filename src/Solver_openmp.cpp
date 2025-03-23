@@ -6194,6 +6194,12 @@ int main(int argc, char **argv)
 	case 5:
 		Berea.AMGX_solver_apparent_permeability_REV();
 		break;
+	case 6:
+		Berea.Eigen_solver_per(1); // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
+		break;
+	case 7:
+		Berea.Eigen_solver_per(); // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
+		break;
 	default:
 		break;
 	}
