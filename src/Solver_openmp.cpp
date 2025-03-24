@@ -42,7 +42,7 @@
 #define OMP_PARA 20
 using namespace std;
 using namespace std::chrono;
-
+// PR test
 // CLOCKS_PER_SECOND这个常量表示每一秒（per second）有多少个时钟计时单元
 const double CLOCKS_PER_SECOND = ((clock_t)1000);
 double iters_globa{0};
