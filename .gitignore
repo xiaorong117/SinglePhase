@@ -14,3 +14,4 @@
 !.vscode/
 !*.json
 !voxel_file.txt
+!voxels_number.txt
