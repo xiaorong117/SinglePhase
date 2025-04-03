@@ -3677,6 +3677,8 @@ void PNMsolver::output(int n, int m)
 	ofstream flux("flux.txt");
 	vector<double> macro_fluxes;
 	vector<double> micro_fluxes;
+	vector<double> inter_fluxes;
+
 
 	ostringstream name;
 	name << "Permeability";
@@ -3747,6 +3749,58 @@ void PNMsolver::output(int n, int m)
 	for (int i = 0; i < Pb[pn - 1].full_accum; i++)
 	{
 		outfile << Tb[i].Radiu << endl;
+	}
+
+	outfile << "SCALARS free_gas_flux double 1" << endl;
+	outfile << "LOOKUP_TABLE table12" << endl;
+	for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	{
+		double kkk = Tb[i].Conductivity * abs(Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure);
+		// flux << kkk << endl;
+		outfile << kkk << endl;
+		if (Pb[Tb[i].ID_1].type == 0 && Pb[Tb[i].ID_2].type == 0) // 高岭石流量 
+		{
+			macro_fluxes.push_back(kkk);
+		}
+		else if (Pb[Tb[i].ID_1].type == 1 && Pb[Tb[i].ID_2].type == 1)  // 绿泥石流量
+		{
+			micro_fluxes.push_back(kkk);
+		}
+		else
+		{
+			inter_fluxes.push_back(kkk);
+		}
+		
+	}
+
+	auto macro_ptr = max_element(macro_fluxes.begin(), macro_fluxes.end());
+	auto micro_ptr = max_element(micro_fluxes.begin(), micro_fluxes.end());
+	auto inter_ptr = max_element(inter_fluxes.begin(), inter_fluxes.end());
+	auto macro_min_ptr = min_element(macro_fluxes.begin(), macro_fluxes.end());
+	auto micro_min_ptr = min_element(micro_fluxes.begin(), micro_fluxes.end());
+	auto inter_min_ptr = min_element(inter_fluxes.begin(), inter_fluxes.end());
+	auto thred1 = *macro_ptr * 0.1;
+	auto thred2 = *micro_ptr * 0.1;
+	auto thred3 = *inter_min_ptr * 0.1;
+
+	for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	{
+		double kkk = Tb[i].Conductivity * abs(Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure);
+		/*输出流量分布*/
+		if (Pb[Tb[i].ID_1].type == 0 && Pb[Tb[i].ID_2].type == 0 && kkk >= thred1) // 高岭石 主通道
+		{
+			Tb[i].main_free = int(0);
+			// main_path_macro << Tb[i].ID_1 << "\t" << Pb[Tb[i].ID_1].Radiu << "\t" << Tb[i].ID_2 << "\t" << Pb[Tb[i].ID_2].Radiu << endl;
+		}
+		else if (Pb[Tb[i].ID_1].type == 1 && Pb[Tb[i].ID_2].type == 1 && kkk >= thred2) // 绿泥石 主通道
+		{
+			Tb[i].main_free = int(1);
+			// main_path_micro << i << ";" << kkk << endl;
+		}
+		else if ((Pb[Tb[i].ID_1].type == 1 && Pb[Tb[i].ID_2].type == 0 && kkk >= thred2) || (Pb[Tb[i].ID_1].type == 0 && Pb[Tb[i].ID_2].type == 1 && kkk >= thred3))
+		{
+			Tb[i].main_free = int(3);
+		}
 	}
 
 	// outfile << "SCALARS free_gas_flux double 1" << endl;
@@ -3882,13 +3936,147 @@ void PNMsolver::output(int n, int m)
 	// 	outfile << Tb[i].main_surface << endl;
 	// }
 
-	outfile.close();
+
+	// outfile << "SCALARS free_gas_flux double 1" << endl;
+	// outfile << "LOOKUP_TABLE table12" << endl;
+	// for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	// {
+	// 	double kkk = Tb[i].Conductivity * abs(Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure);
+	// 	// flux << kkk << endl;
+	// 	outfile << kkk << endl;
+	// 	if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n) // 大孔 主通道
+	// 	{
+	// 		macro_fluxes.push_back(kkk);
+	// 	}
+	// 	else if (Tb[i].ID_1 >= macro_n && Tb[i].ID_2 >= macro_n)
+	// 	{
+	// 		micro_fluxes.push_back(kkk);
+	// 	}
+	// }
+
+	// auto macro_ptr = max_element(macro_fluxes.begin(), macro_fluxes.end());
+	// auto micro_ptr = max_element(micro_fluxes.begin(), micro_fluxes.end());
+	// auto macro_min_ptr = min_element(macro_fluxes.begin(), macro_fluxes.end());
+	// auto micro_min_ptr = min_element(micro_fluxes.begin(), micro_fluxes.end());
+	// auto thred1 = *macro_ptr * 0.1;
+	// auto thred2 = *micro_ptr * 0.1;
+
+	// for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	// {
+	// 	double kkk = Tb[i].Conductivity * abs(Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure);
+	// 	/*输出流量分布*/
+	// 	if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n && kkk >= thred1) // 大孔 主通道
+	// 	{
+	// 		Tb[i].main_free = int(0);
+	// 		// main_path_macro << Tb[i].ID_1 << "\t" << Pb[Tb[i].ID_1].Radiu << "\t" << Tb[i].ID_2 << "\t" << Pb[Tb[i].ID_2].Radiu << endl;
+	// 	}
+	// 	else if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n && kkk < thred1) // 大孔 次通道
+	// 	{
+	// 		Tb[i].main_free = int(3);
+	// 		// sub_path_macro << i << ";" << kkk << endl;
+	// 	}
+	// 	else if (Tb[i].ID_1 >= macro_n && Tb[i].ID_2 >= macro_n && kkk >= thred2) // 微孔主通道
+	// 	{
+	// 		Tb[i].main_free = int(1);
+	// 		// main_path_micro << i << ";" << kkk << endl;
+	// 	}
+	// 	else if (Tb[i].ID_1 >= macro_n && Tb[i].ID_2 >= macro_n && kkk < thred2) // 微孔 次通道
+	// 	{
+	// 		Tb[i].main_free = int(4);
+	// 		// sub_path_micro << i << ";" << kkk << endl;
+	// 	}
+	// 	else if (((Tb[i].ID_1 < macro_n && Tb[i].ID_2 >= macro_n) || (Tb[i].ID_1 > macro_n && Tb[i].ID_2 <= macro_n)) && kkk >= thred2) // 连接主
+	// 	{
+	// 		Tb[i].main_free = int(2);
+	// 		// main_path_double << i << ";" << kkk << endl;
+	// 	}
+	// 	else if (((Tb[i].ID_1 < macro_n && Tb[i].ID_2 >= macro_n) || (Tb[i].ID_1 > macro_n && Tb[i].ID_2 <= macro_n)) && kkk < thred2) // 连接次
+	// 	{
+	// 		Tb[i].main_free = int(5);
+	// 		// sub_path_double << i << ";" << kkk << endl;
+	// 	}
+	// }
+
+	// vector<double> micro_diff_flux;
+	// vector<double> macro_diff_flux;
+
+	// outfile << "SCALARS Surface_diffusion_flux double 1" << endl;
+	// outfile << "LOOKUP_TABLE table13" << endl;
+	// for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	// {
+	// 	double average_density = (Pb[Tb[i].ID_1].pressure / (Pb[Tb[i].ID_1].compre * 8.314 * Temperature) + Pb[Tb[i].ID_2].pressure / (Pb[Tb[i].ID_2].compre * 8.314 * Temperature)) / 2;
+	// 	double kkk = Tb[i].Surface_diff_conduc * abs(K_langmuir * Pb[Tb[i].ID_1].pressure / (1 + K_langmuir * Pb[Tb[i].ID_1].pressure) - K_langmuir * Pb[Tb[i].ID_2].pressure / (1 + K_langmuir * Pb[Tb[i].ID_2].pressure)) / (average_density * 16e-3);
+	// 	outfile << kkk << endl;
+	// 	if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n) // 大孔 主通道
+	// 	{
+	// 		macro_diff_flux.push_back(kkk);
+	// 	}
+	// 	else
+	// 	{
+	// 		micro_diff_flux.push_back(kkk);
+	// 	}
+	// }
+	// auto macro_diff_ptr = max_element(macro_diff_flux.begin(), macro_diff_flux.end());
+	// auto diff_ptr = max_element(micro_diff_flux.begin(), micro_diff_flux.end());
+	// auto Thred3 = *macro_diff_ptr * 0.1;
+	// auto Thred4 = *diff_ptr * 0.1;
+	// flux << "macro_max: " << *macro_ptr << endl
+	// 	 << "macro_min: " << *macro_min_ptr << endl
+	// 	 << "micro_max: " << *micro_ptr << endl
+	// 	 << "micro_min: " << *micro_min_ptr << endl;
+
+	// flux << "diff_max: " << *diff_ptr << endl;
+	// /*输出流量分布*/
+	// for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	// {
+	// 	double average_density = (Pb[Tb[i].ID_1].pressure / (Pb[Tb[i].ID_1].compre * 8.314 * Temperature) + Pb[Tb[i].ID_2].pressure / (Pb[Tb[i].ID_2].compre * 8.314 * Temperature)) / 2;
+	// 	double kkk = Tb[i].Surface_diff_conduc * abs(K_langmuir * Pb[Tb[i].ID_1].pressure / (1 + K_langmuir * Pb[Tb[i].ID_1].pressure) - K_langmuir * Pb[Tb[i].ID_2].pressure / (1 + K_langmuir * Pb[Tb[i].ID_2].pressure)) / (average_density * 16e-3);
+	// 	if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n && kkk > Thred3) // 大孔 主通道
+	// 	{
+	// 		Tb[i].main_surface = int(0);
+	// 	}
+	// 	else if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n && kkk <= Thred3) // 大孔 次通道
+	// 	{
+	// 		Tb[i].main_surface = int(3);
+	// 	}
+	// 	else if (Tb[i].ID_1 >= macro_n && Tb[i].ID_2 >= macro_n && kkk >= Thred4) // 微孔主通道
+	// 	{
+	// 		Tb[i].main_surface = int(1);
+	// 	}
+	// 	else if (Tb[i].ID_1 >= macro_n && Tb[i].ID_2 >= macro_n && kkk < Thred4) // 微孔 次通道
+	// 	{
+	// 		Tb[i].main_surface = int(4);
+	// 	}
+	// 	else if (((Tb[i].ID_1 < macro_n && Tb[i].ID_2 >= macro_n) || (Tb[i].ID_1 > macro_n && Tb[i].ID_2 <= macro_n)) && kkk >= Thred4) // 连接主
+	// 	{
+	// 		Tb[i].main_surface = int(2);
+	// 	}
+	// 	else if (((Tb[i].ID_1 < macro_n && Tb[i].ID_2 >= macro_n) || (Tb[i].ID_1 > macro_n && Tb[i].ID_2 <= macro_n)) && kkk < Thred4) // 连接次
+	// 	{
+	// 		Tb[i].main_surface = int(5);
+	// 	}
+	// }
+
+	// outfile << "SCALARS main_free int 1" << endl;
+	// outfile << "LOOKUP_TABLE table17" << endl;
+	// for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	// {
+	// 	outfile << Tb[i].main_free << endl;
+	// }
+	// outfile << "SCALARS main_surface int 1" << endl;
+	// outfile << "LOOKUP_TABLE table18" << endl;
+	// for (int i = 0; i < Pb[pn - 1].full_accum; i++)
+	// {
+	// 	outfile << Tb[i].main_surface << endl;
+	// }
+
 	// main_path_macro.close();
 	// main_path_micro.close();
 	// main_path_double.close();
 	// sub_path_macro.close();
 	// sub_path_micro.close();
 	// sub_path_double.close();
+	outfile.close();
 }
 
 void PNMsolver::output(double n, double m)
@@ -6387,23 +6575,22 @@ int main(int argc, char **argv)
 	// 	Tij << "Tij=" << out << ";Knusen_number=" << Knusen_number << ";slip=" << Slip << ";pressure=" << pressure / 1e6 << endl;
 	// }
 	// Tij.close();
-
+	
 	// ofstream Tij_micro("Tij_micro.txt");
 	// for (size_t i = 1; i < 51; i++)
 	// {
 	// 	auto pressure = i * 1e6;
-	// 	auto R = 4e-9;
-	// 	auto r = 1.8e-9;
-	// 	auto km = 20e-21;
+	// 	auto r = 0.1e-6;
+	// 	auto km = 0.388e-15; //K_Clay_HP=62.96e-15;  0.91e-6  #粘土单元本征渗透率 m2    K_Clay_LP=0.388e-15; 0.1e-6  #粘土单元本征渗透率 m2
 	// 	auto z{Berea.compre(pressure)};
 	// 	auto vis(Berea.visco(pressure, z, Temperature));
 	// 	double rho = 0.016 * pressure / (z * 8.314 * Temperature);
 	// 	auto Knusen_number = vis / pressure * sqrt(pi * z * 8.314 * Temperature / (2 * 0.016)) / r;
-	// 	double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
-	// 	double beta = 4;
+	// 	double alpha = 1.5272 * 2 / pi * atan(2.5  * pow(Knusen_number, 0.5));
+	// 	double beta = 6;
 	// 	double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
-	// 	auto out = Slip * pi * pow(R, 2) * km / (vis * R);
-	// 	Tij_micro << "Tij=" << out << ";Knusen_number=" << Knusen_number << ";slip=" << Slip << ";pressure=" << pressure / 1e6 << endl;
+	// 	auto out = Slip * km ;
+	// 	Tij_micro << "Tij= " << out/1e-15 << "\t;Knusen_number= " << Knusen_number << "\t;slip= " << Slip << "\t;pressure= " << pressure / 1e6 << endl;
 	// }
 	// Tij_micro.close();
 
