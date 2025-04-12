@@ -699,7 +699,6 @@ void PNMsolver::Para_cal_REV()
 			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / (Pb[Tb_in[i].ID_1].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (Pb[Tb_in[i].ID_1].Radiu * 2);
 			Slip_ID1 = Function_Slip_clay(Knusen_number_ID1);
 			Apparent_K_ID1 = Slip_ID1 * pow(Pb[Tb_in[i].ID_1].Radiu, 2) / 8;
-
 		}
 		else if (Pb[Tb_in[i].ID_1].type == 3) // macro pores
 		{
@@ -738,7 +737,6 @@ void PNMsolver::Para_cal_REV()
 			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / (Pb[Tb_in[i].ID_2].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (Pb[Tb_in[i].ID_2].Radiu * 2);
 			Slip_ID2 = Function_Slip_clay(Knusen_number_ID2);
 			Apparent_K_ID2 = Slip_ID2 * pow(Pb[Tb_in[i].ID_2].Radiu, 2) / 8;
-
 		}
 		else if (Pb[Tb_in[i].ID_1].type == 3) // macro pores
 		{
@@ -860,12 +858,11 @@ void PNMsolver::Para_cal_REV_newton()
 			Slip_ID1 = Function_Slip_clay(Knusen_number_ID1);
 			Apparent_K_ID1 = Slip_ID1 * Pb[Tb_in[i].ID_1].REV_k;
 		}
-		else if (Pb[Tb_in[i].ID_1].type == 2) // macro pores 
+		else if (Pb[Tb_in[i].ID_1].type == 2) // macro pores
 		{
 			Knusen_number_ID1 = Pb[Tb_in[i].ID_1].visco / (Pb[Tb_in[i].ID_1].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature / (2 * 0.016)) / (Pb[Tb_in[i].ID_1].Radiu * 2);
 			Slip_ID1 = Function_Slip_clay(Knusen_number_ID1);
 			Apparent_K_ID1 = Slip_ID1 * pow(Pb[Tb_in[i].ID_1].Radiu, 2) / 8;
-
 		}
 		else if (Pb[Tb_in[i].ID_1].type == 3) // crack
 		{
@@ -904,7 +901,6 @@ void PNMsolver::Para_cal_REV_newton()
 			Knusen_number_ID2 = Pb[Tb_in[i].ID_2].visco / (Pb[Tb_in[i].ID_2].pressure + refer_pressure) * sqrt(pi * Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature / (2 * 0.016)) / (Pb[Tb_in[i].ID_2].Radiu * 2);
 			Slip_ID2 = Function_Slip_clay(Knusen_number_ID2);
 			Apparent_K_ID2 = Slip_ID2 * pow(Pb[Tb_in[i].ID_2].Radiu, 2) / 8;
-
 		}
 		else if (Pb[Tb_in[i].ID_2].type == 3)
 		{
@@ -1540,7 +1536,7 @@ void PNMsolver::Matrix_gas_pro_REV()
 		/*cout << num1 << "\t" << full_coord[i] << endl;*/
 		ia[i - para_macro + 1] = num1 + 1;		 // 前i行累计的非零值数量，其中1为ia[0]的值
 		ja[num + temp - 1] = i - para_macro + 1; // 第i行对角线的值的位置
-		if (Pb[i].type == 0 || Pb[i].type == 1) // clay HP
+		if (Pb[i].type == 0 || Pb[i].type == 1)	 // clay HP
 		{
 			a[num + temp - 1] = 0.016 * (Pb[i].REV_porosity1 + (1 - Pb[i].REV_porosity2) * Pb[i].REV_micro_porosity) * Pb[i].volume / (8.314 * Temperature * dt * Pb[i].compre); // 主对角线的初始值
 		}
@@ -1930,7 +1926,7 @@ void PNMsolver::memory()
 			porosity = oo[6];
 			ko = oo[7];
 			micro_radius = oo[8];
-			ko = porosity * pow(micro_radius, 2) / 32;
+			// ko = porosity * pow(micro_radius, 2) / 32;
 			cout << "ko = " << ko << endl;
 			porosity_OMHP1 = oo[9];
 			porosity_OMLP1 = oo[10];
@@ -2099,6 +2095,7 @@ void PNMsolver::Paramentinput()
 						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].radius_micro >> Pb[i].porosity >> Pb[i].km;
 						Pb[i].km = ko;
 						Pb[i].porosity = porosity;
+						Pb[i].radius_micro = micro_radius;
 					}
 				}
 				else
@@ -2121,7 +2118,7 @@ void PNMsolver::Paramentinput()
 						double waste{0};
 						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].REV_porosity1 >> Pb[i].radius_micro >> Pb[i].REV_k; // REV
 						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
-						if (Pb[i].type == 0) // CLAY-HP																					// CLAY-HP																							// 粘土
+						if (Pb[i].type == 0)																							// CLAY-HP																					// CLAY-HP																							// 粘土
 						{
 							Pb[i].REV_porosity1 = porosity_clay_HP1;
 							Pb[i].REV_porosity2 = porosity_clay_HP2;
@@ -2350,19 +2347,14 @@ void PNMsolver::para_cal()
 		Pb[i].visco_old = Pb[i].visco;
 	}
 
-// Total gas content
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
-#endif
+
 	for (int i = inlet; i < macro_n - outlet; i++)
 	{
 		double compre_1 = compre(inlet_pre + refer_pressure);
 		double compre_2 = compre(outlet_pre + refer_pressure);
 		total_macro += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
 	}
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
-#endif
+
 	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 	{
 		double compre_1 = compre(inlet_pre + refer_pressure);
@@ -2382,9 +2374,7 @@ void PNMsolver::para_cal()
 
 	// 水力传导系数计算
 	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
-#endif
+
 	for (int i = 0; i < 2 * tn; i++)
 	{
 		// 计算克努森数
@@ -2396,17 +2386,9 @@ void PNMsolver::para_cal()
 		{
 			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Tb_in[i].Radiu * 2);
 		}
-		else if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 > macro_n)
-		{
-			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / ((Pb[Tb_in[i].ID_2].radius_micro + Tb_in[i].Radiu) / 2);
-		}
-		else if (Tb_in[i].ID_1 > macro_n && Tb_in[i].ID_2 < macro_n)
-		{
-			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / ((Pb[Tb_in[i].ID_1].radius_micro + Tb_in[i].Radiu) / 2);
-		}
 		else
 		{
-			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / ((Pb[Tb_in[i].ID_2].radius_micro + Pb[Tb_in[i].ID_1].radius_micro) / 2);
+			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (micro_radius * 2);
 		}
 
 		// 计算滑移项
@@ -2605,16 +2587,12 @@ void PNMsolver::para_cal(double mode)
 	double compre_2 = compre(outlet_pre + refer_pressure);
 	double n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
 	double n_ad2 = n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) / (1 + K_langmuir * (outlet_pre + refer_pressure)));
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA)) reduction(+ : total_macro)
-#endif
+
 	for (int i = inlet; i < macro_n - outlet; i++)
 	{
 		total_macro += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
 	}
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA)) reduction(+ : total_micro_free, total_micro_ad)
-#endif
+
 	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 	{
 		total_micro_free += (inlet_pre + refer_pressure) * (Pb[i].porosity - n_ad1 / Rho_ad) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * (Pb[i].porosity - n_ad2 / Rho_ad) * 16 / (compre_2 * 8.314 * Temperature);
@@ -3679,7 +3657,6 @@ void PNMsolver::output(int n, int m)
 	vector<double> micro_fluxes;
 	vector<double> inter_fluxes;
 
-
 	ostringstream name;
 	name << "Permeability";
 	name << to_string(inlet_pre + refer_pressure);
@@ -3758,11 +3735,11 @@ void PNMsolver::output(int n, int m)
 		double kkk = Tb[i].Conductivity * abs(Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure);
 		// flux << kkk << endl;
 		outfile << kkk << endl;
-		if (Pb[Tb[i].ID_1].type == 0 && Pb[Tb[i].ID_2].type == 0) // 高岭石流量 
+		if (Pb[Tb[i].ID_1].type == 0 && Pb[Tb[i].ID_2].type == 0) // 高岭石流量
 		{
 			macro_fluxes.push_back(kkk);
 		}
-		else if (Pb[Tb[i].ID_1].type == 1 && Pb[Tb[i].ID_2].type == 1)  // 绿泥石流量
+		else if (Pb[Tb[i].ID_1].type == 1 && Pb[Tb[i].ID_2].type == 1) // 绿泥石流量
 		{
 			micro_fluxes.push_back(kkk);
 		}
@@ -3770,7 +3747,6 @@ void PNMsolver::output(int n, int m)
 		{
 			inter_fluxes.push_back(kkk);
 		}
-		
 	}
 
 	auto macro_ptr = max_element(macro_fluxes.begin(), macro_fluxes.end());
@@ -3935,7 +3911,6 @@ void PNMsolver::output(int n, int m)
 	// {
 	// 	outfile << Tb[i].main_surface << endl;
 	// }
-
 
 	// outfile << "SCALARS free_gas_flux double 1" << endl;
 	// outfile << "LOOKUP_TABLE table12" << endl;
@@ -5281,9 +5256,7 @@ void PNMsolver::para_cal_in_newton()
 
 	// 水力传导系数计算
 	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
-#endif
+
 	for (int i = 0; i < 2 * tn; i++)
 	{
 		// 计算克努森数
@@ -5295,17 +5268,9 @@ void PNMsolver::para_cal_in_newton()
 		{
 			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Tb_in[i].Radiu * 2);
 		}
-		else if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 > macro_n)
-		{
-			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / ((Pb[Tb_in[i].ID_2].radius_micro + Tb_in[i].Radiu) / 2);
-		}
-		else if (Tb_in[i].ID_1 > macro_n && Tb_in[i].ID_2 < macro_n)
-		{
-			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / ((Pb[Tb_in[i].ID_1].radius_micro + Tb_in[i].Radiu) / 2);
-		}
 		else
 		{
-			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / ((Pb[Tb_in[i].ID_2].radius_micro + Pb[Tb_in[i].ID_1].radius_micro) / 2);
+			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (micro_radius * 2);
 		}
 
 		// 计算滑移项
@@ -6575,7 +6540,7 @@ int main(int argc, char **argv)
 	// 	Tij << "Tij=" << out << ";Knusen_number=" << Knusen_number << ";slip=" << Slip << ";pressure=" << pressure / 1e6 << endl;
 	// }
 	// Tij.close();
-	
+
 	// ofstream Tij_micro("Tij_micro.txt");
 	// for (size_t i = 1; i < 51; i++)
 	// {
