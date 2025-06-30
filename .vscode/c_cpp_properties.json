@@ -4,13 +4,10 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/home/rong/桌面/Mycode/lib/AMGX/include",
-                "/home/rong/桌面/Mycode/lib/cuda-samples-master/Common",
-                "/usr/local/cuda-12.1/include",
-                "/home/rong/桌面/Mycode/lib/FADBAD++-2.1/FADBAD++",
-                "/home/rong/桌面/Mycode/lib/eigen-3.4.0/eigen-3.4.0",
-                "/home/rong/桌面/Mycode/lib/mumps-main/mumps/5.7.1/libseq",
-                "/home/rong/桌面/Mycode/lib/mumps-main/mumps/5.7.1/include"
+                "/home/rong/Mycode/lib/AMGX/include",
+                "/home/rong/Mycode/lib/cuda-samples-master/Common",
+                "/usr/local/cuda-12.9/include",
+                "/home/rong/Mycode/lib/FADBAD++-2.1/FADBAD++",
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
