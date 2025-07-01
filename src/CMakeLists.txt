@@ -34,20 +34,20 @@ set_target_properties(${PROJECT_NAME}
 # 链接库
 target_include_directories(${PROJECT_NAME} PRIVATE ${CURRENT_WORK_PATH}/src)
 target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/Mycode/lib/AMGX/include)
-# target_link_libraries(${PROJECT_NAME} PUBLIC -static-libstdc++ -static-libgcc)
-# target_link_libraries(${PROJECT_NAME} PUBLIC "/home/rong/Mycode/lib/AMGX/build/libamgx.a")
-# target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcusolver_static.a")
-# target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcublas_static.a")
-# target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcublasLt_static.a")
-# target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcudart_static.a")
-# target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libculibos.a")
-# target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcusparse_static.a")
-# target_link_libraries(${PROJECT_NAME} PUBLIC  "/home/rong/Mycode/lib/libnvToolsExt.so.1.0.0")
-# target_link_libraries(${PROJECT_NAME} PUBLIC "/home/rong/Mycode/lib/gsl/lib/libgsl.a" "/home/rong/Mycode/lib/gsl/lib/libgslcblas.a")
+target_link_libraries(${PROJECT_NAME} PUBLIC -static-libstdc++ -static-libgcc)
+target_link_libraries(${PROJECT_NAME} PUBLIC "/home/rong/Mycode/lib/AMGX/build/libamgx.a")
+target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcusolver_static.a")
+target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcublas_static.a")
+target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcublasLt_static.a")
+target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcudart_static.a")
+target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libculibos.a")
+target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcusparse_static.a")
+target_link_libraries(${PROJECT_NAME} PUBLIC  "/home/rong/Mycode/lib/libnvToolsExt.so.1.0.0")
+target_link_libraries(${PROJECT_NAME} PUBLIC "/home/rong/Mycode/lib/gsl/lib/libgsl.a" "/home/rong/Mycode/lib/gsl/lib/libgslcblas.a")
 
-target_link_libraries(${PROJECT_NAME} PUBLIC  ${CUSOLVER_LIBRARY} ${CUDART_LIBRARY} ${CUBLAS_LIBRARY} ${CUSPARSE_LIBRARY})
-target_link_libraries(${PROJECT_NAME} PUBLIC "/home/rong/Mycode/lib/AMGX/build/libamgxsh.so")
-target_link_libraries(${PROJECT_NAME} PUBLIC gsl gslcblas)
+# target_link_libraries(${PROJECT_NAME} PUBLIC  ${CUSOLVER_LIBRARY} ${CUDART_LIBRARY} ${CUBLAS_LIBRARY} ${CUSPARSE_LIBRARY})
+# target_link_libraries(${PROJECT_NAME} PUBLIC "/home/rong/Mycode/lib/AMGX/build/libamgxsh.so")
+# target_link_libraries(${PROJECT_NAME} PUBLIC gsl gslcblas)
 
 
 # copy

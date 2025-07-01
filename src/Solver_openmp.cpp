@@ -991,6 +991,7 @@ void PNMsolver::Para_cal_REV_newton()
 			temp4 = Apparent_K_ID2 * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 2) / (Pb[Tb_in[i].ID_2].visco * Pb[Tb_in[i].ID_2].Radiu);
 
 			Tb_in[i].Conductivity = temp1 * temp2 * temp3 * temp4 / (temp2 * temp3 * temp4 + temp1 * temp3 * temp4 + temp1 * temp2 * temp4 + temp1 * temp2 * temp3);
+			/*rong_debug*/
 			// Tb_in[i].Conductivity = 1e-30;
 		}
 	}
@@ -2601,8 +2602,8 @@ void PNMsolver::Paramentinput()
 					{
 						double waste{0};
 						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].REV_porosity1 >> Pb[i].radius_micro >> Pb[i].REV_k; // REV
-						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
-						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].type; // REV
+						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
+						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].type; // REV
 						if (Pb[i].type == 0)																							// CLAY-HP																					// CLAY-HP																							// 粘土
 						{
 							Pb[i].REV_porosity1 = porosity_clay_HP1;
@@ -2797,18 +2798,34 @@ void PNMsolver::Paramentinput(int i) // 非均质微孔区域
 
 	for (int i = 0; i < 2 * tn; i++)
 	{
-		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
+		if(Flag_Hybrid == 1)
 		{
-			Tb_in[i].Radiu = voxel_size * Tb_in[i].Radiu; // pnm部分为喉道的半径
+			if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
+			{
+				Tb_in[i].Radiu = voxel_size * Tb_in[i].Radiu; // pnm部分为喉道的半径
+			}
+			else
+			{
+				Tb_in[i].Radiu = voxel_size * voxel_size * Tb_in[i].Radiu; // Darcy区的为接触面积
+			}
+			Tb_in[i].Length = voxel_size * Tb_in[i].Length;
+			if (Tb_in[i].Length < voxel_size)
+			{
+				Tb_in[i].Length = voxel_size;
+			}
+			Tb_in[i].center_x = voxel_size * Tb_in[i].center_x;
+			Tb_in[i].center_y = voxel_size * Tb_in[i].center_y;
+			Tb_in[i].center_z = voxel_size * Tb_in[i].center_z;
 		}
 		else
 		{
-			Tb_in[i].Radiu = voxel_size * voxel_size * Tb_in[i].Radiu; // Darcy区的为接触面积
+			Tb_in[i].Radiu = voxel_size * Tb_in[i].Radiu;
+			Tb_in[i].Length = voxel_size * Tb_in[i].Length - Pb[Tb_in[i].ID_1].Radiu - Pb[Tb_in[i].ID_2].Radiu;
+			if (Tb_in[i].Length < voxel_size)
+			{
+				Tb_in[i].Length = voxel_size;
+			}
 		}
-		Tb_in[i].Length = voxel_size * Tb_in[i].Length;
-		Tb_in[i].center_x = voxel_size * Tb_in[i].center_x;
-		Tb_in[i].center_y = voxel_size * Tb_in[i].center_y;
-		Tb_in[i].center_z = voxel_size * Tb_in[i].center_z;
 	}
 }
 
