@@ -1223,9 +1223,8 @@ void PNMsolver::Para_cal_REV(double)
 		if (Pb[Tb_in[i].ID_1].type == 2 && Pb[Tb_in[i].ID_2].type == 2)
 		{
 			temp1 = Apparent_K_ID1 * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 2) / (Pb[Tb_in[i].ID_1].visco * Pb[Tb_in[i].ID_1].Radiu);
-			// temp2 = pi * pow(Tb_in[i].Radiu, 4) / (8 * (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2 * Tb_in[i].Length);
+			temp2 = pi * pow(Tb_in[i].Radiu, 4) / (8 * (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2 * Tb_in[i].Length);
 			temp3 = Apparent_K_ID2 * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 2) / (Pb[Tb_in[i].ID_2].visco * Pb[Tb_in[i].ID_2].Radiu);
-			// Tb_in[i].Conductivity = temp1 * temp2 * temp3 / (temp1 * temp2 + temp2 * temp3 + temp1 * temp3);
 			Tb_in[i].Conductivity = temp1 * temp2 * temp3 / (temp1 * temp2 + temp2 * temp3 + temp1 * temp3);
 		}
 		else
@@ -2602,8 +2601,8 @@ void PNMsolver::Paramentinput()
 					{
 						double waste{0};
 						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].REV_porosity1 >> Pb[i].radius_micro >> Pb[i].REV_k; // REV
-						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
-						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].type; // REV
+						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
+						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].type; // REV
 						if (Pb[i].type == 0)																							// CLAY-HP																					// CLAY-HP																							// 粘土
 						{
 							Pb[i].REV_porosity1 = porosity_clay_HP1;
@@ -2720,6 +2719,9 @@ void PNMsolver::Paramentinput()
 			{
 				Tb_in[i].Length = voxel_size;
 			}
+			Tb_in[i].center_x = voxel_size * Tb_in[i].center_x;
+			Tb_in[i].center_y = voxel_size * Tb_in[i].center_y;
+			Tb_in[i].center_z = voxel_size * Tb_in[i].center_z;
 		}
 		else
 		{
@@ -2730,12 +2732,6 @@ void PNMsolver::Paramentinput()
 				Tb_in[i].Length = voxel_size;
 			}
 		}
-
-
-
-		Tb_in[i].center_x = voxel_size * Tb_in[i].center_x;
-		Tb_in[i].center_y = voxel_size * Tb_in[i].center_y;
-		Tb_in[i].center_z = voxel_size * Tb_in[i].center_z;
 	}
 }
 
