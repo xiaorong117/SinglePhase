@@ -7,7 +7,7 @@
                 "/home/rong/Mycode/lib/AMGX/include",
                 "/home/rong/Mycode/lib/cuda-samples-master/Common",
                 "/usr/local/cuda-12.9/include",
-                "/home/rong/Mycode/lib/FADBAD++-2.1/FADBAD++",
+                "/home/rong/Mycode/lib/FADBAD++-2.1/FADBAD++"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

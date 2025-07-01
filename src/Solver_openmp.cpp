@@ -782,8 +782,8 @@ void PNMsolver::Para_cal_REV()
 			Apparent_K_ID2 = Slip_ID2 * Pb[Tb_in[i].ID_2].REV_k + Pb[Tb_in[i].ID_2].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * (Pb[Tb_in[i].ID_2].pressure + refer_pressure), 2) / Rho_ID2;
 		}
 		/*debug*/
-		Pb[Tb_in[i].ID_1].visco = gas_vis;
-		Pb[Tb_in[i].ID_2].visco = gas_vis;
+		// Pb[Tb_in[i].ID_1].visco = gas_vis;
+		// Pb[Tb_in[i].ID_2].visco = gas_vis;
 		if (Pb[Tb_in[i].ID_1].type == 2 && Pb[Tb_in[i].ID_2].type == 2)
 		{
 			temp1 = Apparent_K_ID1 * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 2) / (Pb[Tb_in[i].ID_1].visco * Pb[Tb_in[i].ID_1].Radiu);
@@ -803,16 +803,16 @@ void PNMsolver::Para_cal_REV()
 
 			Tb_in[i].Conductivity = temp1 * temp2 * temp3 * temp4 / (temp2 * temp3 * temp4 + temp1 * temp3 * temp4 + temp1 * temp2 * temp4 + temp1 * temp2 * temp3);
 			/*rong_debug*/
-			Tb_in[i].Conductivity = 1e-30;
+			// Tb_in[i].Conductivity = 1e-30;
 		}
 	}
 
-	ofstream out("Rong_debug.txt");
-	for (int i = 0; i < 2 * tn; i++)
-	{
-		out << "ID_1 = " << Tb_in[i].ID_1 << "\t" << "ID_2 = " << Tb_in[i].ID_2 << "\t" << Tb_in[i].Length << "\t" << "cond[" << i << "] = " << Tb_in[i].Conductivity << endl;
-	}
-	out.close();
+	// ofstream out("Rong_debug.txt");
+	// for (int i = 0; i < 2 * tn; i++)
+	// {
+	// 	out << "ID_1 = " << Tb_in[i].ID_1 << "\t" << "ID_2 = " << Tb_in[i].ID_2 << "\t" << Tb_in[i].Length << "\t" << "cond[" << i << "] = " << Tb_in[i].Conductivity << endl;
+	// }
+	// out.close();
 
 	// merge throat
 	int label = 0;
@@ -971,8 +971,8 @@ void PNMsolver::Para_cal_REV_newton()
 			Apparent_K_ID2 = Slip_ID2 * Pb[Tb_in[i].ID_2].REV_k + Pb[Tb_in[i].ID_2].visco * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * (Pb[Tb_in[i].ID_2].pressure + refer_pressure), 2) / Rho_ID2;
 		}
 		/*debug*/
-		Pb[Tb_in[i].ID_1].visco = gas_vis;
-		Pb[Tb_in[i].ID_2].visco = gas_vis;
+		// Pb[Tb_in[i].ID_1].visco = gas_vis;
+		// Pb[Tb_in[i].ID_2].visco = gas_vis;
 		if (Pb[Tb_in[i].ID_1].type == 2 && Pb[Tb_in[i].ID_2].type == 2)
 		{
 			temp1 = Apparent_K_ID1 * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 2) / (Pb[Tb_in[i].ID_1].visco * Pb[Tb_in[i].ID_1].Radiu);
@@ -991,15 +991,15 @@ void PNMsolver::Para_cal_REV_newton()
 			temp4 = Apparent_K_ID2 * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 2) / (Pb[Tb_in[i].ID_2].visco * Pb[Tb_in[i].ID_2].Radiu);
 
 			Tb_in[i].Conductivity = temp1 * temp2 * temp3 * temp4 / (temp2 * temp3 * temp4 + temp1 * temp3 * temp4 + temp1 * temp2 * temp4 + temp1 * temp2 * temp3);
-			Tb_in[i].Conductivity = 1e-30;
+			// Tb_in[i].Conductivity = 1e-30;
 		}
 	}
-	ofstream out("Rong_NEWTON_debug.txt");
-	for (int i = 0; i < 2 * tn; i++)
-	{
-		out << "ID_1 = " << Tb_in[i].ID_1 << "\t" << "ID_2 = " << Tb_in[i].ID_2 << "\t" << Tb_in[i].Length << "\t" << "cond[" << i << "] = " << Tb_in[i].Conductivity << endl;
-	}
-	out.close();
+	// ofstream out("Rong_NEWTON_debug.txt");
+	// for (int i = 0; i < 2 * tn; i++)
+	// {
+	// 	out << "ID_1 = " << Tb_in[i].ID_1 << "\t" << "ID_2 = " << Tb_in[i].ID_2 << "\t" << Tb_in[i].Length << "\t" << "cond[" << i << "] = " << Tb_in[i].Conductivity << endl;
+	// }
+	// out.close();
 	// merge throat
 	int label = 0;
 	Tb[0].ID_1 = Tb_in[0].ID_1;
@@ -1218,13 +1218,14 @@ void PNMsolver::Para_cal_REV(double)
 			Apparent_K_ID2 = Pb[Tb_in[i].ID_2].REV_k;
 		}
 		/*debug*/
-		Pb[Tb_in[i].ID_1].visco = gas_vis;
-		Pb[Tb_in[i].ID_2].visco = gas_vis;
+		// Pb[Tb_in[i].ID_1].visco = gas_vis;
+		// Pb[Tb_in[i].ID_2].visco = gas_vis;
 		if (Pb[Tb_in[i].ID_1].type == 2 && Pb[Tb_in[i].ID_2].type == 2)
 		{
 			temp1 = Apparent_K_ID1 * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 2) / (Pb[Tb_in[i].ID_1].visco * Pb[Tb_in[i].ID_1].Radiu);
-			temp2 = pi * pow(Tb_in[i].Radiu, 4) / (8 * (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2 * Tb_in[i].Length);
+			// temp2 = pi * pow(Tb_in[i].Radiu, 4) / (8 * (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2 * Tb_in[i].Length);
 			temp3 = Apparent_K_ID2 * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 2) / (Pb[Tb_in[i].ID_2].visco * Pb[Tb_in[i].ID_2].Radiu);
+			// Tb_in[i].Conductivity = temp1 * temp2 * temp3 / (temp1 * temp2 + temp2 * temp3 + temp1 * temp3);
 			Tb_in[i].Conductivity = temp1 * temp2 * temp3 / (temp1 * temp2 + temp2 * temp3 + temp1 * temp3);
 		}
 		else
@@ -1239,16 +1240,16 @@ void PNMsolver::Para_cal_REV(double)
 
 			Tb_in[i].Conductivity = temp1 * temp2 * temp3 * temp4 / (temp2 * temp3 * temp4 + temp1 * temp3 * temp4 + temp1 * temp2 * temp4 + temp1 * temp2 * temp3);
 			/*rong_debug*/
-			Tb_in[i].Conductivity = 1e-30;
+			// Tb_in[i].Conductivity = 1e-30;
 		}
 	}
 
-	ofstream out("Rong_debug.txt");
-	for (int i = 0; i < 2 * tn; i++)
-	{
-		out << "ID_1 = " << Tb_in[i].ID_1 << "\t" << "ID_2 = " << Tb_in[i].ID_2 << "\t" << Tb_in[i].Length << "\t" << "cond[" << i << "] = " << Tb_in[i].Conductivity << endl;
-	}
-	out.close();
+	// ofstream out("Rong_debug.txt");
+	// for (int i = 0; i < 2 * tn; i++)
+	// {
+	// 	out << "ID_1 = " << Tb_in[i].ID_1 << "\t" << "ID_2 = " << Tb_in[i].ID_2 << "\t" << Tb_in[i].Length << "\t" << "cond[" << i << "] = " << Tb_in[i].Conductivity << endl;
+	// }
+	// out.close();
 
 	// merge throat
 	int label = 0;
@@ -2601,8 +2602,8 @@ void PNMsolver::Paramentinput()
 					{
 						double waste{0};
 						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].REV_porosity1 >> Pb[i].radius_micro >> Pb[i].REV_k; // REV
-						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
-						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].type; // REV
+						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
+						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].type; // REV
 						if (Pb[i].type == 0)																							// CLAY-HP																					// CLAY-HP																							// 粘土
 						{
 							Pb[i].REV_porosity1 = porosity_clay_HP1;
@@ -2704,21 +2705,33 @@ void PNMsolver::Paramentinput()
 
 	for (int i = 0; i < 2 * tn; i++)
 	{
-		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
+		if(Flag_Hybrid == 1)
 		{
-			Tb_in[i].Radiu = voxel_size * Tb_in[i].Radiu; // pnm部分为喉道的半径
+			if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
+			{
+				Tb_in[i].Radiu = voxel_size * Tb_in[i].Radiu; // pnm部分为喉道的半径
+			}
+			else
+			{
+				Tb_in[i].Radiu = voxel_size * voxel_size * Tb_in[i].Radiu; // Darcy区的为接触面积
+			}
+			Tb_in[i].Length = voxel_size * Tb_in[i].Length;
+			if (Tb_in[i].Length < voxel_size)
+			{
+				Tb_in[i].Length = voxel_size;
+			}
 		}
 		else
 		{
-			Tb_in[i].Radiu = voxel_size * voxel_size * Tb_in[i].Radiu; // Darcy区的为接触面积
+			Tb_in[i].Radiu = voxel_size * Tb_in[i].Radiu;
+			Tb_in[i].Length = voxel_size * Tb_in[i].Length - Pb[Tb_in[i].ID_1].Radiu - Pb[Tb_in[i].ID_2].Radiu;
+			if (Tb_in[i].Length < voxel_size)
+			{
+				Tb_in[i].Length = voxel_size;
+			}
 		}
-		// Tb_in[i].Length = voxel_size * Tb_in[i].Length;
 
-		Tb_in[i].Length = voxel_size * Tb_in[i].Length - Pb[Tb_in[i].ID_1].Radiu - Pb[Tb_in[i].ID_2].Radiu;
-		if (Tb_in[i].Length < voxel_size)
-		{
-			Tb_in[i].Length = voxel_size;
-		}
+
 
 		Tb_in[i].center_x = voxel_size * Tb_in[i].center_x;
 		Tb_in[i].center_y = voxel_size * Tb_in[i].center_y;
@@ -5171,12 +5184,12 @@ void PNMsolver::AMGX_solver_subroutine_per(AMGX_matrix_handle &A_amgx, AMGX_vect
 	AMGX_solver_solve_with_0_initial_guess(solver, b_amgx, solution_amgx);
 	AMGX_vector_download(solution_amgx, dX);
 
-	ofstream dX_debug("dX_debug.txt");
-	for (size_t i = 0; i < op + mp; i++)
-	{
-		dX_debug << dX[i] << endl;
-	}
-	dX_debug.close();
+	// ofstream dX_debug("dX_debug.txt");
+	// for (size_t i = 0; i < op + mp; i++)
+	// {
+	// 	dX_debug << dX[i] << endl;
+	// }
+	// dX_debug.close();
 	if (Flag_intri_per == true)
 	{
 		// 更新应力场
@@ -7050,40 +7063,40 @@ void PNMsolver::Matrix_per_REV(double mode)
 			}
 		}
 	}
-	ofstream ia_debug("ia_debug.txt");
-	for (size_t i = 0; i < op + mp + 1; i++)
-	{
-		ia_debug << ia[i] << endl;
-	}
-	ia_debug.close();
+	// ofstream ia_debug("ia_debug.txt");
+	// for (size_t i = 0; i < op + mp + 1; i++)
+	// {
+	// 	ia_debug << ia[i] << endl;
+	// }
+	// ia_debug.close();
 
-	ofstream ja_debug("ja_debug.txt");
-	for (size_t i = 0; i < NA; i++)
-	{
-		ja_debug << ja[i] << endl;
-	}
-	ja_debug.close();
+	// ofstream ja_debug("ja_debug.txt");
+	// for (size_t i = 0; i < NA; i++)
+	// {
+	// 	ja_debug << ja[i] << endl;
+	// }
+	// ja_debug.close();
 
-	ofstream a_debug("a_debug.txt");
-	for (size_t i = 0; i < NA; i++)
-	{
-		a_debug << a[i] << endl;
-	}
-	a_debug.close();
+	// ofstream a_debug("a_debug.txt");
+	// for (size_t i = 0; i < NA; i++)
+	// {
+	// 	a_debug << a[i] << endl;
+	// }
+	// a_debug.close();
 
-	ofstream B_debug("B_debug.txt");
-	for (size_t i = 0; i < op + mp; i++)
-	{
-		B_debug << B[i] << endl;
-	}
-	B_debug.close();
+	// ofstream B_debug("B_debug.txt");
+	// for (size_t i = 0; i < op + mp; i++)
+	// {
+	// 	B_debug << B[i] << endl;
+	// }
+	// B_debug.close();
 
-	ofstream Tb_debug("Tb_debug.txt");
-	for (size_t i = 0; i < 2 * tn; i++)
-	{
-		Tb_debug << Tb[i].Conductivity << endl;
-	}
-	Tb_debug.close();
+	// ofstream Tb_debug("Tb_debug.txt");
+	// for (size_t i = 0; i < 2 * tn; i++)
+	// {
+	// 	Tb_debug << Tb[i].Conductivity << endl;
+	// }
+	// Tb_debug.close();
 
 	if (Flag_eigen == false)
 	{
@@ -7271,7 +7284,7 @@ void PNMsolver::AMGX_solver_intri_permeability_REV()
 	micro_advec = micro_outlet_advec_Q();
 
 	double end = omp_get_wtime();
-	outfile << "permeability = " << (macro + micro_advec) * gas_vis * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) << "\t"
+	outfile << "permeability = " << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre))/1e-15 << " mD" << "\t"
 			<< "pressure = " << inlet_pre + refer_pressure << " Pa" << "\t"
 			<< endl;
 
@@ -7321,13 +7334,13 @@ void PNMsolver::Eigen_solver_intri_REV()
 	Matrix_per_REV(1);
 
 	/*rong debug*/
-	CSR2COO();
-	ofstream aCOO_debug("aCOO_debug.txt");
-	for (size_t i = 0; i < NA; i++)
-	{
-		aCOO_debug << COO_A[i].col << " " << COO_A[i].row << " " << COO_A[i].val << endl;
-	}
-	aCOO_debug.close();
+	// CSR2COO();
+	// ofstream aCOO_debug("aCOO_debug.txt");
+	// for (size_t i = 0; i < NA; i++)
+	// {
+	// 	aCOO_debug << COO_A[i].col << " " << COO_A[i].row << " " << COO_A[i].val << endl;
+	// }
+	// aCOO_debug.close();
 	
 	Eigen::SparseMatrix<double, Eigen::RowMajor> A0(op + mp, op + mp);
 	Eigen::VectorXd B0(op + mp, 1);
@@ -7337,7 +7350,7 @@ void PNMsolver::Eigen_solver_intri_REV()
 	micro_advec = micro_outlet_advec_Q();
 
 	double end = omp_get_wtime();
-	outfile << "permeability = " << (macro + micro_advec) * gas_vis * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) << "\t"
+	outfile << "permeability = " << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre))/1e-15 << " md" << "\t"
 			<< "pressure = " << inlet_pre + refer_pressure << " Pa" << "\t"
 			<< endl;
 

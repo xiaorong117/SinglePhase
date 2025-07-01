@@ -107,7 +107,8 @@
         "assert.h": "c",
         "superlusupport": "cpp",
         "unistd.h": "c",
-        "*.expression": "cpp"
+        "*.expression": "cpp",
+        "format": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabledIfIncludesResolve",
     "C_Cpp.dimInactiveRegions": false
