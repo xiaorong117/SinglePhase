@@ -50,6 +50,7 @@ using namespace fadbad;
 template <typename T>
 using reverse_mode = B<T>;
 
+std::vector<int> inlet_boundary(512);
 // 输出vector到文件
 void writeVectorToFile(const std::vector<int>& vec, const std::string& filename) {
     std::ofstream outFile(filename);
@@ -1709,68 +1710,74 @@ reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_in_macro_produc(reverse_mod
 reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double> &Pi, reverse_mode<double> *Pjs, reverse_mode<double> &Wi, reverse_mode<double> *Wjs, int Pore_id)
 {
 	reverse_mode<double> RETURN;
-	size_t counter{0};
+	// size_t counter{0};
+	size_t iCounter{0};
+	/* 时间项 */
+	/* 流量项 */
+	int ID2 = Tb_in[Pb[Pore_id].full_accum_ori - Pb[Pore_id].full_coord_ori].ID_2;
 	for (int j = Pb[Pore_id].full_accum_ori - Pb[Pore_id].full_coord_ori; j < Pb[Pore_id].full_accum_ori; j++)
 	{
+		// 判断是否连接同一微孔区域 不用判断是否是进出口 不关于进出口的变量求导就行了
+		if (Tb_in[j].ID_2 != ID2)
+		{
+			iCounter++;
+			ID2 = Tb_in[j].ID_2;
+		}
+
 		if (Tb[j].ID_2 < inlet) // 大孔进口
 		{
 			if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 			{
-				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pb[Tb[j].ID_2].pressure);
+				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[iCounter]);
 			}
 			else
 			{
-				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pb[Tb[j].ID_2].pressure);
+				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[iCounter]);
 			}
-			counter++;
 		}
 		else if (Tb[j].ID_2 >= op + inlet && Tb[j].ID_2 < macro_n) // 大孔出口
 		{
 			if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 			{
-				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pb[Tb[j].ID_2].pressure);
+				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[iCounter]);
 			}
 			else
 			{
-				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pb[Tb[j].ID_2].pressure);
+				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[iCounter]);
 			}
-			counter++;
 		}
 		else if (Tb[j].ID_2 >= macro_n && Tb[j].ID_2 < macro_n + m_inlet) // 微孔进口边界
 		{
 			if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 			{
-				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pb[Tb[j].ID_2].pressure);
+				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[iCounter]);
 			}
 			else
 			{
-				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pb[Tb[j].ID_2].pressure);
+				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[iCounter]);
 			}
-			counter++;
 		}
 		else if (Tb[j].ID_2 >= pn - m_outlet) // 微孔出口边界
 		{
 			if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 			{
-				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pb[Tb[j].ID_2].pressure);
+				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[iCounter]);
 			}
 			else
 			{
-				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pb[Tb[j].ID_2].pressure);
+				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[iCounter]);
 			}
-			counter++;
 		}
 		else
 		{
 			if (Pb[Tb[j].ID_1].pressure > Pb[Tb[j].ID_2].pressure)
 			{
-				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[counter]);
+				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[iCounter]);
 			}
 			else
 			{
-				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[counter]);
+				RETURN += conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, Pore_id, j) * (Pi - Pjs[iCounter]);
 			}
-			counter++;
 		}
 	}
 	return RETURN;
@@ -4671,6 +4678,21 @@ void PNMsolver::para_cal_kong()
 	coolist2 = newVec;
 
 
+	ifstream inlet_coo1("filtered_inlet_coo.txt", ios::in);
+	if (!inlet_coo1.is_open())
+	{
+		cout << "inlet_coo1 file not found!" << endl;
+		abort();
+	}
+	for (size_t i = 0; i < 512; i++)
+	{
+		double x, y, z, r;
+		int id, type;
+		inlet_coo1 >> x >> y >> z >> id >> r >> type;
+		inlet_boundary[i] = id;
+	}
+	inlet_coo1.close();
+
 	NA = accumulate(coolist.begin(), coolist.end(), 0) + op + mp;
 	coolist.clear();
 	dX = new double[(op + mp) * 2];
@@ -4887,55 +4909,24 @@ void PNMsolver::AMGXsolver_subroutine_co2_mehane(AMGX_matrix_handle &A_amgx, AMG
 	/*--------------------------x(t+dt) = x(t) + dx----------------------*/
 
 	/*-----------------------------边界条件---------------------------------*/
-	reverse_mode<double> Pi, Wi;
-	reverse_mode<double> *Pjs, *Wjs;
 	for (int i = 0; i < inlet; i++)
 	{
 		// Pb[i].pressure += dX[Tb[i].ID_2 - inlet];
 		// Pb[i].mole_frac_co2 = inlet_co2_mole_frac;
-		for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++)
-		{
-			conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j);
-			Pb[i].pressure = Pb[Tb_in[j].ID_2 - inlet].pressure + 0.000173 * pi * pow(Tb_in[j].Radiu,2) / Tb_in[j].Conductivity; // 0.000215是一个常数，代表了单位面积的流量
-		}
 	}
 	for (int i = macro_n; i < macro_n + m_inlet; i++)
 	{
 		// Pb[i].pressure = Pb[Tb[Pb[i].full_accum - Pb[i].full_coord].ID_2].pressure;
 		// Pb[i].mole_frac_co2 = inlet_co2_mole_frac;
-		for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++)
-		{
-			conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j);
-			Pb[i].pressure = Pb[Tb_in[i].ID_2 - inlet].pressure + 0.000173 * pi * pow(Tb_in[i].Radiu,2) / Tb_in[i].Conductivity; // 0.000215是一个常数，代表了单位面积的流量
-		}
 	}
-	ifstream inlet_coo1("filtered_inlet_coo.txt", ios::in);
-	if (!inlet_coo1.is_open())
-	{
-		cout << "inlet_coo1 file not found!" << endl;
-		abort();
-	}
-	for (size_t i = 0; i < 512; i++)
-	{
-		double x, y, z, r;
-		int id, type;
-		inlet_coo1 >> x >> y >> z >> id >> r >> type;
-		for (int j = Pb[id].full_accum_ori - Pb[id].full_coord_ori; j < Pb[id].full_accum_ori; j++)
-		{
-			conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, id, j);
-			Pb[id].pressure = Pb[Tb_in[j].ID_2 - inlet].pressure + 0.000173 * pi * pow(Tb_in[j].Radiu,2) / Tb_in[j].Conductivity;
-		}
-	}
-	inlet_coo1.close();
-	
 
 	for (size_t i = inlet + op; i < inlet + op + outlet; i++)
 	{
-		Pb[i].mole_frac_co2 = Pb[Tb_in[Pb[i].full_accum - Pb[i].full_coord].ID_2].mole_frac_co2;
+		Pb[i].mole_frac_co2 = Pb[Tb[Pb[i].full_accum - Pb[i].full_coord].ID_2].mole_frac_co2;
 	}
 	for (size_t i = macro_n + m_inlet + mp; i < macro_n + m_inlet + mp + m_outlet; i++)
 	{
-		Pb[i].mole_frac_co2 = Pb[Tb_in[Pb[i].full_accum - Pb[i].full_coord].ID_2].mole_frac_co2;
+		Pb[i].mole_frac_co2 = Pb[Tb[Pb[i].full_accum - Pb[i].full_coord].ID_2].mole_frac_co2;
 	}
 
 	/*-----------------------------边界条件---------------------------------*/
