@@ -2923,7 +2923,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM()
 	outfile << "inner loop = " << inter_n << "\t"
 			<< "machine_time = " << duration3.count() / 1000 + machine_time << "\t"
 			<< "physical_time = " << time_all << "\t"
-			<< "dimensionless_time = " << time_all / (2000 * voxel_size) / ((area_main_Q().second + area_side_Q().second) / pow(1745 * voxel_size, 2) / 0.2) << "\t"
+			<< "dimensionless_time = " << time_all / (2000 * voxel_size) * ((area_main_Q().second + area_side_Q().second) / pow(1745 * voxel_size, 2) / 0.2) << "\t"
 			<< "v_main = " << area_main_Q().first<< "\t"
 			<< "v_side = " << area_side_Q().first<< "\t"
 			<< "dt = " << dt << "\t"
@@ -4896,10 +4896,10 @@ double PNMsolver::micro_outlet_advec_Q()
 std::pair<double,double> PNMsolver::area_main_Q()
 {
 	double v_outlet = 0;
-	double Q_outlet = 0;
+	double Q_outlet = 0; 
 
 	int icount = 0;
-	ofstream area_main_v("area_main_v.txt", ios::app);
+	// ofstream area_main_v("area_main_v.txt", ios::app);
 	for (int i = 0; i < inlet; i++)
 	{
 		bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
@@ -4920,7 +4920,7 @@ std::pair<double,double> PNMsolver::area_main_Q()
 				v_outlet += abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij; // 体积流量
 				Q_outlet += abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con);
 				icount += 1;
-				area_main_v << j << '\t' << Pb[Tb[j].ID_1].pressure << '\t' << Pb[Tb[j].ID_2].pressure << '\t' << con << '\t' << Aij << '\t' << abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij << endl;
+				// area_main_v << j << '\t' << Pb[Tb[j].ID_1].pressure << '\t' << Pb[Tb[j].ID_2].pressure << '\t' << con << '\t' << Aij << '\t' << abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij << endl;
 			}
 		}
 	}
@@ -4943,13 +4943,13 @@ std::pair<double,double> PNMsolver::area_main_Q()
 			{
 				v_outlet += abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij; // 体积流量
 				Q_outlet += abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con);
-				area_main_v << j << '\t' << Pb[Tb[j].ID_1].pressure << '\t' << Pb[Tb[j].ID_2].pressure << '\t' << con << '\t' << Aij << '\t' << abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij << endl;
+				// area_main_v << j << '\t' << Pb[Tb[j].ID_1].pressure << '\t' << Pb[Tb[j].ID_2].pressure << '\t' << con << '\t' << Aij << '\t' << abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij << endl;
 				icount += 1;
 			}
 		}
 	}
-	area_main_v << "icount = " << icount << endl;
-	area_main_v.close();
+	// area_main_v << "icount = " << icount << endl;
+	// area_main_v.close();
 	return make_pair(abs(v_outlet/icount),Q_outlet);
 }
 
@@ -4957,7 +4957,7 @@ std::pair<double,double> PNMsolver::area_side_Q()
 {
 	double Q_outlet = 0;
 	double v_outlet = 0;
-	ofstream area_side_v("area_side_v.txt", ios::app);
+	// ofstream area_side_v("area_side_v.txt", ios::app);
 	int icount = 0;
 	for (int i = 0; i < inlet; i++)
 	{
@@ -4973,7 +4973,7 @@ std::pair<double,double> PNMsolver::area_side_Q()
 			{
 				v_outlet += abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij;
 				Q_outlet += abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con);
-				area_side_v << j << '\t' << Pb[Tb[j].ID_1].pressure << '\t' << Pb[Tb[j].ID_2].pressure << '\t' << con << '\t' << Aij << '\t' << abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij << endl;
+				// area_side_v << j << '\t' << Pb[Tb[j].ID_1].pressure << '\t' << Pb[Tb[j].ID_2].pressure << '\t' << con << '\t' << Aij << '\t' << abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij << endl;
 				icount += 1;
 			}
 			else
@@ -4996,7 +4996,7 @@ std::pair<double,double> PNMsolver::area_side_Q()
 			{
 				v_outlet += abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij;
 				Q_outlet += abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con);
-				area_side_v << j << '\t' << Pb[Tb[j].ID_1].pressure << '\t' << Pb[Tb[j].ID_2].pressure << '\t' << con << '\t' << Aij << '\t' << abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij << endl;
+				// area_side_v << j << '\t' << Pb[Tb[j].ID_1].pressure << '\t' << Pb[Tb[j].ID_2].pressure << '\t' << con << '\t' << Aij << '\t' << abs((Pb[Tb[j].ID_1].pressure - Pb[Tb[j].ID_2].pressure) * con)/Aij << endl;
 				icount += 1;
 			}
 			else
@@ -5005,8 +5005,8 @@ std::pair<double,double> PNMsolver::area_side_Q()
 			}
 		}
 	}
-	area_side_v << "icount = " << icount << endl;
-	area_side_v.close();
+	// area_side_v << "icount = " << icount << endl;
+	// area_side_v.close();
 	return make_pair(abs(v_outlet/icount),Q_outlet);
 }
 
@@ -5126,8 +5126,8 @@ void PNMsolver::AMGXsolver_subroutine_co2_mehane(AMGX_matrix_handle &A_amgx, AMG
 	/*-----------------------------边界条件---------------------------------*/
 	if (FLAG == 0)
 	{
-		ofstream boundarty("boundary.txt", ios::app);
-		boundarty << " wrong "  << endl;
+		// ofstream boundarty("boundary.txt", ios::app);
+		// boundarty << " wrong "  << endl;
 		for (int i = 0; i < inlet; i++)
 		{
 			// Pb[i].pressure += dX[Tb[i].ID_2 - inlet];
@@ -5138,14 +5138,14 @@ void PNMsolver::AMGXsolver_subroutine_co2_mehane(AMGX_matrix_handle &A_amgx, AMG
 			// Pb[i].pressure = Pb[Tb[Pb[i].full_accum - Pb[i].full_coord].ID_2].pressure;
 			// Pb[i].mole_frac_co2 = inlet_co2_mole_frac;
 		}
-		boundarty.close();
+		// boundarty.close();
 		FLAG += 1;
 	}
 	else
 	{
-		ofstream boundarty("boundary.txt", ios::app);
-		boundarty << " ok "  << endl;
-		boundarty.close();
+		// ofstream boundarty("boundary.txt", ios::app);
+		// boundarty << " ok "  << endl;
+		// boundarty.close();
 		// for (int i = 0; i < inlet; i++)
 		// {
 		// 	bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
