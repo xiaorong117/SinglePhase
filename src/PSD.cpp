@@ -125,7 +125,7 @@ public:
         }
 
         // 处理中间的完整区间
-        for (size_t i = idx1; i < idx2; ++i) {
+        for (size_t i = idx1 + 1; i < idx2; ++i) {
             integral += (w_values[i] - w_values[i-1]) * 
                        (dvdw_values[i-1] + dvdw_values[i]) / 2.0;
         }
@@ -185,16 +185,16 @@ int main() {
         std::cout << "w范围: [" << data.min_w() << ", " << data.max_w() << "]\n";
         
         // 绘制原始数据曲线
-        data.plotOriginalData();
+        // data.plotOriginalData();
         
         // 示例查询
-        double test_w;
-        std::cout << "\n输入要查询的w值 (输入q退出): ";
-        while (std::cin >> test_w) {
-            double result = data.get_dvdw(test_w);
-            std::cout << "dv/dw(" << test_w << ") = " << result << std::endl;
-            std::cout << "输入要查询的w值 (输入q退出): ";
-        }
+        // double test_w;
+        // std::cout << "\n输入要查询的w值 (输入q退出): ";
+        // while (std::cin >> test_w) {
+        //     double result = data.get_dvdw(test_w);
+        //     std::cout << "dv/dw(" << test_w << ") = " << result << std::endl;
+        //     std::cout << "输入要查询的w值 (输入q退出): ";
+        // }
         
         // 示例积分计算
         double w1, w2;
