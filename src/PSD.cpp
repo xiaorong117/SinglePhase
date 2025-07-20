@@ -7,12 +7,20 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cmath>
+#include <equation_solve.cpp> // 假设这个头文件包含了方程求解的相关函数
 
 class GasAdsorptionData {
 private:
     std::vector<double> w_values;
     std::vector<double> dvdw_values;
     std::vector<double> log_w_values;
+    double Average_pressure = 1e6; // 平均压力
+    double Average_compre =1; // 平均压缩系数
+    double Average_visco = 1.4e-5; // 平均粘度
+    double Temperature = 298.15; // 温度，单位为K
+    double phi = 0.1; // 孔隙度
+    double tao = 1.5; // 迂曲度
+    double mean_free_path = 1e-9; // 平均自由程
     
     // 线性插值函数
     double linearInterpolate(double x, double x0, double x1, double y0, double y1) const {
@@ -63,7 +71,7 @@ public:
             std::istringstream iss(line);
             double w, dvdw;
             if (iss >> w >> dvdw) {
-                w_values.push_back(w);
+                w_values.push_back(w * 1e-9); // 将w转换为微米
                 log_w_values.push_back(std::log10(w));
                 // 检查dvdw是否为NaN或无穷大
                 if (std::isnan(dvdw) || std::isinf(dvdw)) {
@@ -98,6 +106,35 @@ public:
         }
     }
 
+   // 修改Average_pressure，Average_compre和Temperature的值
+    void setParameters(double pressure, double compre, double temp, double visco, double phi_value, double tao_value) {
+        Average_pressure = pressure;
+        Average_compre = compre;    
+        Temperature = temp;
+        Average_visco = visco;
+        phi = phi_value;
+        tao = tao_value;
+    }
+
+    double knusen(double Average_visco,double Average_pressure, double Average_compre, double Temperature, double w) const {
+        // 计算平均自由程
+       double Kn =  Average_visco / Average_pressure * sqrt(3.14 * Average_compre * 8.314 * Temperature / (2 * 0.016)) / w;
+       return Kn;
+    }
+
+    void mean_free()
+    {
+        mean_free_path = Average_visco / Average_pressure * sqrt(3.14 * Average_compre * 8.314 * Temperature / (2 * 0.016));
+    }
+
+    double Function_Slip(double knusen) const
+    {
+        double alpha_om = 1.358 * 2 / 3.14 * atan(4 * pow(knusen, 0.4));
+        double beta_om = 4;
+        double Slip_om = (1 + alpha_om * knusen) * (1 + beta_om * knusen / (1 + knusen));
+        return Slip_om;
+    }
+
     // 计算f(w)在[w1, w2]区间内的积分
     double integrate(double w1, double w2) const {
         if (w1 >= w2) {
@@ -118,27 +155,177 @@ public:
         size_t idx2 = std::distance(w_values.begin(), it2);
 
         // 处理第一个不完整的区间
-        if (w1 > w_values[idx1-1]) {
+        if ((w1 > w_values[idx1-1]) && (idx1 > 0)) {
+            double kn1 = knusen(Average_visco,Average_pressure, Average_compre, Temperature, w1);
+            double kn2 = knusen(Average_visco,Average_pressure, Average_compre, Temperature, w_values[idx1]);
+            double Slip_w1 = Function_Slip(kn1);
+            double Slip_w2 = Function_Slip(kn2);
+            double y1 = get_dvdw(w1) * w1 * w1 * Slip_w1;
+            double y2 = dvdw_values[idx1] * w_values[idx1] * w_values[idx1] * Slip_w2;
+            integral += (w_values[idx1] - w1) * (y1 + y2) / 2.0;
+        }
+
+        // 处理中间的完整区间
+        for (size_t i = idx1; i < idx2; ++i) {
+            double w_1 = w_values[i];
+            double w_2 = w_values[i + 1];
+            double kn1 = knusen(Average_visco,Average_pressure, Average_compre, Temperature, w_1);
+            double kn2 = knusen(Average_visco,Average_pressure, Average_compre, Temperature, w_2);
+            double Slip_w1 = Function_Slip(kn1);
+            double Slip_w2 = Function_Slip(kn2);
+            double y1 = dvdw_values[i] * w_1 * w_1 * Slip_w1;
+            double y2 = dvdw_values[i + 1] * w_2 * w_2 * Slip_w2;
+            integral += (w_2 - w_1) * (y1 + y2) / 2.0;
+        }
+
+        // 处理最后一个不完整的区间
+        if (w2 < w_values[idx2]) {
+            double kn1 = knusen(Average_visco,Average_pressure, Average_compre, Temperature, w2);
+            double kn2 = knusen(Average_visco,Average_pressure, Average_compre, Temperature, w_values[idx2]);
+            double Slip_w1 = Function_Slip(kn1);
+            double Slip_w2 = Function_Slip(kn2);
+            double y1 = get_dvdw(w2) * w2 * w2 * Slip_w1;
+            double y2 = dvdw_values[idx2] * w_values[idx2] * w_values[idx2] * Slip_w2;
+            integral -= (w_values[idx2]- w2) * (y1 + y2) / 2.0;
+        }
+        return integral;
+    }
+
+     // 计算f(w)在[w1, w2]区间内的积分
+    double integrate_intrin(double w1, double w2) const {
+        if (w1 >= w2) {
+            throw std::invalid_argument("w1必须小于w2");
+        }
+
+        // 确保w1和w2在数据范围内
+        w1 = std::max(w1, w_values.front());
+        w2 = std::min(w2, w_values.back());
+
+        double integral = 0.0;
+
+        // 找到w1和w2对应的索引范围
+        auto it1 = std::lower_bound(w_values.begin(), w_values.end(), w1);
+        auto it2 = std::lower_bound(w_values.begin(), w_values.end(), w2);
+
+        size_t idx1 = std::distance(w_values.begin(), it1);
+        size_t idx2 = std::distance(w_values.begin(), it2);
+
+        // 处理第一个不完整的区间
+        if ((w1 > w_values[idx1-1]) && (idx1 > 0)) {
+            double y1 = get_dvdw(w1) * w1 * w1;
+            double y2 = dvdw_values[idx1] * w_values[idx1] * w_values[idx1];
+            integral += (w_values[idx1] - w1) * (y1 + y2) / 2.0;
+        }
+
+        // 处理中间的完整区间
+        for (size_t i = idx1; i < idx2; ++i) {
+            double w_1 = w_values[i];
+            double w_2 = w_values[i + 1];
+            double y1 = dvdw_values[i] * w_1 * w_1;
+            double y2 = dvdw_values[i + 1] * w_2 * w_2;
+            integral += (w_2 - w_1) * (y1 + y2) / 2.0;
+        }
+
+        // 处理最后一个不完整的区间
+        if (w2 < w_values[idx2]) {
+            double y1 = get_dvdw(w2) * w2 * w2;
+            double y2 = dvdw_values[idx2] * w_values[idx2] * w_values[idx2];
+            integral -= (w_values[idx2]- w2) * (y1 + y2) / 2.0;
+        }
+        return integral;
+    }
+    
+        // 计算f(w)在[w1, w2]区间内的积分
+    double integrate2(double w1, double w2) const {
+        if (w1 >= w2) {
+            throw std::invalid_argument("w1必须小于w2");
+        }
+
+        // 确保w1和w2在数据范围内
+        w1 = std::max(w1, w_values.front());
+        w2 = std::min(w2, w_values.back());
+
+        double integral = 0.0;
+
+        // 找到w1和w2对应的索引范围
+        auto it1 = std::lower_bound(w_values.begin(), w_values.end(), w1);
+        auto it2 = std::lower_bound(w_values.begin(), w_values.end(), w2);
+
+        size_t idx1 = std::distance(w_values.begin(), it1);
+        size_t idx2 = std::distance(w_values.begin(), it2);
+
+        // 处理第一个不完整的区间
+        if ((w1 > w_values[idx1-1]) && (idx1 > 0)) {
             double y1 = get_dvdw(w1);
             double y2 = dvdw_values[idx1];
             integral += (w_values[idx1] - w1) * (y1 + y2) / 2.0;
         }
 
         // 处理中间的完整区间
-        for (size_t i = idx1 + 1; i < idx2; ++i) {
-            integral += (w_values[i] - w_values[i-1]) * 
-                       (dvdw_values[i-1] + dvdw_values[i]) / 2.0;
+        for (size_t i = idx1; i < idx2; ++i) {
+            double w_1 = w_values[i];
+            double w_2 = w_values[i + 1];
+            double y1 = dvdw_values[i];
+            double y2 = dvdw_values[i + 1];
+            integral += (w_2 - w_1) * (y1 + y2) / 2.0;
         }
 
         // 处理最后一个不完整的区间
-        if (w2 < w_values[idx2]) {
-            double y1 = dvdw_values[idx2-1];
-            double y2 = get_dvdw(w2);
-            integral += (w2 - w_values[idx2-1]) * (y1 + y2) / 2.0;
+        if ((w2 < w_values[idx2])) {
+            double y1 = get_dvdw(w2);
+            double y2 = dvdw_values[idx2];
+            integral -= (w_values[idx2] - w2) * (y1 + y2) / 2.0;
         }
 
         return integral;
     }
+
+    // 计算渗透率
+    double calculatePermeability(double w1, double w2) const {
+        double integral = integrate(w1, w2);
+        double V = integrate2(w1, w2);
+        double K = integral / V / 32.0 * phi / tao; // 假设常数为32.0
+        return K;
+    }
+
+    // 计算渗透率
+    double calculatePermeability_intrin(double w1, double w2) const {
+        double integral = integrate_intrin(w1, w2);
+        double V = integrate2(w1, w2);
+        double K = integral / V / 32.0 * phi / tao; // 假设常数为32.0
+        return K;
+    }
+
+    double calculate_mean_poresize(double w1, double w2) {
+        mean_free();
+        equation_solve solver(mean_free_path);
+        double L = solver.solveForL(integrate(w1, w2)/integrate2(w1,w2));
+        return L;
+    };    
+
+    double calculate_mean_poresize_intrin(double w1, double w2) {
+        double L = sqrt(integrate_intrin(w1, w2)/integrate2(w1,w2));
+        return L;
+    };    
+
+    std::array<double,2> calculate_Permeability_aver(double w1, double w2){
+        mean_free();
+        equation_solve solver(mean_free_path);
+        double W_bar = calculate_mean_poresize(w1,w2);
+        double integral = solver.f(W_bar);
+        double K = integral / 32.0 * phi / tao; // 假设常数为32.0
+        std::array<double,2>arr = {K, W_bar};
+        return arr;
+    };
+
+    std::array<double,2> calculate_Permeability_aver_intri(double w1, double w2){
+        equation_solve solver(mean_free_path);
+        double W_bar = calculate_mean_poresize_intrin(w1,w2);
+        double integral = pow(W_bar,2);
+        double K = integral / 32.0 * phi / tao; // 假设常数为32.0
+        std::array<double,2>arr = {K, W_bar};
+        return arr;
+    };
 
     // 获取dv/dw(w)的函数
     double get_dvdw(double w) const {
@@ -154,7 +341,6 @@ public:
         return linearInterpolate(w, w_values[idx-1], w_values[idx], 
                                dvdw_values[idx-1], dvdw_values[idx]);
     }
-
     // 获取数据点数量
     size_t size() const {
         return w_values.size();
@@ -176,44 +362,48 @@ public:
     }
 };
 
-int main() {
-    try {
-        // 读取数据文件
-        GasAdsorptionData data("Pore_size_distribution.txt");
+// int main() {
+//     try {
+//         // 读取数据文件
+//         GasAdsorptionData data("Pore_size_distribution.txt");
         
-        std::cout << "成功读取 " << data.size() << " 个数据点\n";
-        std::cout << "w范围: [" << data.min_w() << ", " << data.max_w() << "]\n";
+//         std::cout << "成功读取 " << data.size() << " 个数据点\n";
+//         std::cout << "w范围: [" << data.min_w() << ", " << data.max_w() << "]\n";
         
-        // 绘制原始数据曲线
-        // data.plotOriginalData();
+//         // 绘制原始数据曲线
+//         // data.plotOriginalData();
         
-        // 示例查询
-        // double test_w;
-        // std::cout << "\n输入要查询的w值 (输入q退出): ";
-        // while (std::cin >> test_w) {
-        //     double result = data.get_dvdw(test_w);
-        //     std::cout << "dv/dw(" << test_w << ") = " << result << std::endl;
-        //     std::cout << "输入要查询的w值 (输入q退出): ";
-        // }
+//         // 示例查询
+//         // double test_w;
+//         // std::cout << "\n输入要查询的w值 (输入q退出): ";
+//         // while (std::cin >> test_w) {
+//             // double result = data.get_dvdw(test_w);
+//         //     std::cout << "dv/dw(" << test_w << ") = " << result << std::endl;
+//         //     std::cout << "输入要查询的w值 (输入q退出): ";
+//         // }
         
-        // 示例积分计算
-        double w1, w2;
-        std::cout << "\n输入积分下限w1和上限w2 (用空格分隔): ";
-        while (std::cin >> w1 >> w2) {
-            try {
-                double result = data.integrate(w1, w2);
-                std::cout << "∫(从" << w1 << "到" << w2 << ") f(w) dw = " 
-                          << result << std::endl;
-            } catch (const std::exception& e) {
-                std::cerr << "错误: " << e.what() << std::endl;
-            }
-            std::cout << "\n输入积分下限w1和上限w2 (用空格分隔): ";
-        }
+//         // 示例积分计算
+//         double w1, w2;
+//         std::cout << "\n输入积分下限w1和上限w2 (用空格分隔): ";
+//         while (std::cin >> w1 >> w2) {
+//             try {
+//                 double result = data.calculatePermeability_intrin(w1, w2);
+//                 double result2 = data.calculatePermeability(w1, w2);
+//                 std::cout << "∫(从" << w1 << "到" << w2 << ") f(w) dw = " 
+//                           << result/1e-21 << "nD" << std::endl
+//                           << "results2 = " << result2/1e-21 << "nD" << std::endl;
+//             } catch (const std::exception& e) {
+//                 std::cerr << "错误: " << e.what() << std::endl;
+//             }
+//             std::cout << "\n输入积分下限w1和上限w2 (用空格分隔): ";
+//         }
 
-    } catch (const std::exception& e) {
-        std::cerr << "错误: " << e.what() << std::endl;
-        return 1;
-    }
 
-    return 0;
-}
+
+//     } catch (const std::exception& e) {
+//         std::cerr << "错误: " << e.what() << std::endl;
+//         return 1;
+//     }
+
+//     return 0;
+// }

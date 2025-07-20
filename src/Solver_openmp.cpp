@@ -39,6 +39,8 @@
 //   #include "mkl.h"
 //   }
 
+#include "PSD.cpp" // 包含PSD类的头文件
+
 #define OMP_PARA 20
 using namespace std;
 using namespace std::chrono;
@@ -46,6 +48,8 @@ using namespace std::chrono;
 // CLOCKS_PER_SECOND这个常量表示每一秒（per second）有多少个时钟计时单元
 const double CLOCKS_PER_SECOND = ((clock_t)1000);
 double iters_globa{0};
+GasAdsorptionData PSD_data("Pore_size_distribution.txt");
+
 ////常量设置
 double pi = 3.1415927;
 double gas_vis = 1.4e-3;  // 粘度
@@ -164,6 +168,7 @@ struct pore
 	double km{0};
 	double REV_k{0};
 	double porosity{0};
+	double turosity{0};
 	double REV_porosity1{0};
 	double REV_porosity2{0};
 	double REV_micro_porosity{0};
@@ -330,10 +335,11 @@ public:
 	void para_cal_in_newton();		 // 在牛顿迭代中计算 克努森数
 	void para_cal(double);			 // 喉道长度等相关参数计算
 	void para_cal_in_newton(double); // 在牛顿迭代中计算 克努森数
+	void apparent_average_poresize(int); // 计算表观平均孔径
 
 	double compre(double pressure); // 压缩系数
 	double visco(double pressure, double z, double T);
-	double micro_permeability(double pre);
+	double micro_permeability(double pre,double);
 	void Function_DS(double pressure);
 	double Function_Slip(double knusen);
 	double Function_Slip_clay(double knusen);
@@ -2195,14 +2201,15 @@ void PNMsolver::Function_DS(double pressure)
 	Ds = (Ds_LIST[6] - Ds_LIST[0]) / (50e6 - 1e6) * (pressure - 1e6) + Ds_LIST[0];
 };
 
-double PNMsolver::micro_permeability(double pre)
+double PNMsolver::micro_permeability(double pre, double w)
 {
-	ko = 14.7062e-21;
+	double ko = 6925.07e-21;
+	double W = w;
 	ofstream ap_micro("ap_OM_type1.txt", ios::app);
 	double z = compre(pre);
-	double rho_g = pre * 0.016 / (z * 8.314 * 400); // kg/m3
-	double viscos = visco(pre, z, 400);				// pa.s
-	double Knusen_number = viscos / pre * sqrt(pi * z * 8.314 * 400 / (2 * 0.016)) / (5.6e-9);
+	double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3
+	double viscos = visco(pre, z, Temperature);				// pa.s
+	double Knusen_number = viscos / pre * sqrt(pi * z * 8.314 * Temperature / (2 * 0.016)) / (W);
 	double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
 	double beta = 4;
 	double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
@@ -2581,6 +2588,7 @@ void PNMsolver::Paramentinput()
 						Pb[i].km = ko;
 						Pb[i].porosity = porosity;
 						Pb[i].radius_micro = micro_radius;
+						Pb[i].turosity = 1.5;
 					}
 				}
 				else
@@ -2837,7 +2845,7 @@ double start = omp_get_wtime();
 #pragma omp parallel for num_threads(int(OMP_PARA))
 #endif
 	for (int i = 0; i < pn; i++)
-	{
+	{	
 		if (Pb[i].type == 0)
 		{
 			Pb[i].volume = 4 * pi * pow(Pb[i].Radiu, 3) / 3; // 孔隙网络单元
@@ -2899,14 +2907,12 @@ double start = omp_get_wtime();
 		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
 		double Average_compre = (Pb[Tb_in[i].ID_1].compre + Pb[Tb_in[i].ID_2].compre) / 2;
 		double Average_visco = (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2;
+
 		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
 		{
 			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Tb_in[i].Radiu * 2);
 		}
-		else
-		{
-			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Pb[Tb_in[i].ID_1].radius_micro + Pb[Tb_in[i].ID_2].radius_micro);
-		}
+
 		// 计算滑移项
 		double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
 		double beta = 4;
@@ -2924,7 +2930,8 @@ double start = omp_get_wtime();
 		}
 		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
 		{
-			temp1 = Slip * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 3) / (8 * Average_visco);
+			double Slip1= PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_1].visco,Pb[Tb_in[i].ID_1].pressure + refer_pressure,Pb[Tb_in[i].ID_1].compre,Temperature,Pb[Tb_in[i].ID_1].visco));
+			temp1 = Slip1 * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 3) / (8 * Pb[Tb_in[i].ID_1].visco);
 			length2 = sqrt(pow(Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z, 2));
 			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
 			{
@@ -2938,7 +2945,28 @@ double start = omp_get_wtime();
 			{
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			temp2 = abs(Slip * Pb[Tb_in[i].ID_2].km * Tb_in[i].Radiu * angle2 / (Average_visco * length2));
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity);
+			double w_max{0};
+			if (Pb[Tb_in[i].ID_2].type == 1)
+			{
+				w_max = Pb[Tb_in[i].ID_2].Radiu; 
+			}
+			else
+			{
+				w_max = voxel_size; // 1nm
+			}
+			double K = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
+			// double K1 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
+			
+			temp2 = abs(K * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
+
+			if (std::isnan(temp1) || std::isinf(temp1)) {
+				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
+			} 
+
+			if (std::isnan(temp2) || std::isinf(temp2)) {
+				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
+			} 
 			temp11 = abs(pi * Pb[Tb_in[i].ID_1].Radiu * Ds * n_max_ad);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 
@@ -2948,7 +2976,8 @@ double start = omp_get_wtime();
 		}
 		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
 		{
-			temp2 = Slip * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 3) / (8 * Average_visco);
+			double Slip2= PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_2].visco,Pb[Tb_in[i].ID_2].pressure + refer_pressure,Pb[Tb_in[i].ID_2].compre,Temperature,Pb[Tb_in[i].ID_2].visco));
+			temp2 = Slip2 * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 3) / (8 * Pb[Tb_in[i].ID_2].visco);
 			length1 = sqrt(pow(Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z, 2));
 			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
 			{
@@ -2962,18 +2991,36 @@ double start = omp_get_wtime();
 			{
 				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
 			}
-			temp1 = abs(Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
+
+			double w_max{0};
+			if (Pb[Tb_in[i].ID_1].type == 1)
+			{
+				w_max = Pb[Tb_in[i].ID_1].Radiu; 
+			}
+			else
+			{
+				w_max = voxel_size; // 1nm
+			}
+			
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity);
+			double K = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
+			// double K1 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
+
+			temp1 = abs(K * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
 
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(pi * Pb[Tb_in[i].ID_2].Radiu * Ds * n_max_ad);
+			if (std::isnan(temp1) || std::isinf(temp1)) {
+				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
+			} 
+
+			if (std::isnan(temp2) || std::isinf(temp2)) {
+				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
+			} 
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
 			// Tb_in[i].Surface_diff_conduc = 0;
-		}
-		else if (Tb_in[i].ID_1 < macro_n + m_inlet || Tb_in[i].ID_1 >= pn - m_outlet || Tb_in[i].ID_2 < macro_n + m_inlet || Tb_in[i].ID_2 >= pn - m_outlet)
-		{
-			Tb_in[i].Conductivity = Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu / (Average_visco * Tb_in[i].Length);
-			Tb_in[i].Surface_diff_conduc = Tb_in[i].Radiu * Ds * n_max_ad / Tb_in[i].Length;
 		}
 		else
 		{
@@ -2994,8 +3041,43 @@ double start = omp_get_wtime();
 				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			temp1 = abs(Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
-			temp2 = abs(Slip * Pb[Tb_in[i].ID_2].km * Tb_in[i].Radiu * angle2 / (Average_visco * length2));
+			 
+			double w_max1, w_max2 {0};
+			if (Pb[Tb_in[i].ID_1].type == 1)
+			{
+				w_max1 = Pb[Tb_in[i].ID_1].Radiu; 
+			}
+			else
+			{
+				w_max1 = voxel_size; // 1nm
+			}
+
+			if (Pb[Tb_in[i].ID_2].type == 1)
+			{
+				w_max2 = Pb[Tb_in[i].ID_2].Radiu; 
+			}
+			else
+			{
+				w_max2 = voxel_size; // 1nm
+			}
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity);
+			double K1 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max1);
+			// double K11 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max1);
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity);
+			double K2 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max2);
+			// double K22 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max2);
+
+			temp1 = abs(K1 * Tb_in[i].Radiu * angle1 / (Pb[Tb_in[i].ID_1].visco * length1));
+			temp2 = abs(K2 * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
+			if (std::isnan(temp1) || std::isinf(temp1)) {
+				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
+			} 
+
+			if (std::isnan(temp2) || std::isinf(temp2)) {
+				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
+			} 
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
@@ -3031,6 +3113,15 @@ double start = omp_get_wtime();
 			Tb[label].Slip = Tb_in[i].Slip;
 		}
 	}
+
+	// ofstream Tb_out("Tb_debug_app.txt", ios::app);
+	// for (size_t i = 0; i < 2 * tn; i++)
+	// {
+	// 	Tb_out << Tb_in[i].ID_1 << "\t" << Tb_in[i].ID_2 << "\t" << Tb_in[i].Radiu << "\t" << Tb_in[i].Conductivity << "\t" << Tb_in[i].Surface_diff_conduc << "\t" << Tb_in[i].Knusen << "\t" << Tb_in[i].Slip << endl;
+	// }
+	// Tb_out.close();
+	
+
 	// full_coord
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(int(OMP_PARA))
@@ -3066,11 +3157,11 @@ void PNMsolver::para_cal(double mode)
 {
 	// 计算孔隙的体积
 #ifdef _OPENMP
-	double start = omp_get_wtime();
+double start = omp_get_wtime();
 #pragma omp parallel for num_threads(int(OMP_PARA))
 #endif
 	for (int i = 0; i < pn; i++)
-	{
+	{	
 		if (Pb[i].type == 0)
 		{
 			Pb[i].volume = 4 * pi * pow(Pb[i].Radiu, 3) / 3; // 孔隙网络单元
@@ -3099,22 +3190,23 @@ void PNMsolver::para_cal(double mode)
 	}
 
 	// Total gas content
-	double compre_1 = compre(inlet_pre + refer_pressure);
-	double compre_2 = compre(outlet_pre + refer_pressure);
-	double n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
-	double n_ad2 = n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) / (1 + K_langmuir * (outlet_pre + refer_pressure)));
-
 	for (int i = inlet; i < macro_n - outlet; i++)
 	{
+		double compre_1 = compre(inlet_pre + refer_pressure);
+		double compre_2 = compre(outlet_pre + refer_pressure);
 		total_macro += (inlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * 16 / (compre_2 * 8.314 * Temperature);
 	}
-
 	for (int i = macro_n + m_inlet; i < pn - m_outlet; i++)
 	{
+		double compre_1 = compre(inlet_pre + refer_pressure);
+		double compre_2 = compre(outlet_pre + refer_pressure);
+
+		double n_ad1 = n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) / (1 + K_langmuir * (inlet_pre + refer_pressure)));
+		double n_ad2 = n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) / (1 + K_langmuir * (outlet_pre + refer_pressure)));
+
 		total_micro_free += (inlet_pre + refer_pressure) * (Pb[i].porosity - n_ad1 / Rho_ad) * Pb[i].volume * 16 / (compre_1 * 8.314 * Temperature) - (outlet_pre + refer_pressure) * Pb[i].volume * (Pb[i].porosity - n_ad2 / Rho_ad) * 16 / (compre_2 * 8.314 * Temperature);
 		total_micro_ad += Pb[i].volume * (n_ad1 - n_ad2) * 1000;
 	}
-
 	total_p = total_macro + total_micro_free + total_micro_ad;
 	cout << "total_macro = " << total_macro << endl;
 	cout << "total_micro_free = " << total_micro_free << endl;
@@ -3123,40 +3215,40 @@ void PNMsolver::para_cal(double mode)
 
 	// 水力传导系数计算
 	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
-																										   // 计算克努森数
-	double Knusen_number{0};
-	double Average_pressure{0};
-	double Average_compre{0};
-	double Average_visco{0};
-	double Slip{0};
-	ofstream throatsout("throat.txt");
-	// #ifdef _OPENMP
-	// #pragma omp parallel for num_threads(int(OMP_PARA)) private(Knusen_number, Average_pressure, Average_compre, Average_visco, Slip, \
-// 																temp1, temp2, temp11, temp22, angle1, angle2, length1, length2)
-	// #endif
+
+	ofstream file_out("Average_pore_size.txt", ios::app);
 	for (int i = 0; i < 2 * tn; i++)
 	{
-		Knusen_number = 0;
-		Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
-		Average_compre = (Pb[Tb_in[i].ID_1].compre + Pb[Tb_in[i].ID_2].compre) / 2;
-		Average_visco = (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2;
-		Slip = 1;
+		// 计算克努森数
+		double Knusen_number{0};
+		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
+		double Average_compre = (Pb[Tb_in[i].ID_1].compre + Pb[Tb_in[i].ID_2].compre) / 2;
+		double Average_visco = (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2;
+
+		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
+		{
+			Knusen_number = 0;
+		}
+
+		// 计算滑移项
+		double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
+		double beta = 4;
+		double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
 		Tb_in[i].Knusen = Knusen_number;
-		Tb_in[i].Slip = 1;
+		Tb_in[i].Slip = Slip;
 		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
 		{
 			if (Tb_in[i].Length <= 0) // 剔除可能存在的负喉道长度
 			{
 				Tb_in[i].Length = 0.5 * voxel_size;
 			}
-			/*debug*/
-			throatsout << Tb_in[i].Radiu << endl;
 			Tb_in[i].Conductivity = Slip * pi * pow(Tb_in[i].Radiu, 4) / (8 * Average_visco * Tb_in[i].Length);
 			Tb_in[i].Surface_diff_conduc = 0;
 		}
 		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
 		{
-			temp1 = Slip * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 3) / (8 * Average_visco);
+			double Slip1 = 1;
+			temp1 = Slip1 * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 3) / (8 * Pb[Tb_in[i].ID_1].visco);
 			length2 = sqrt(pow(Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z, 2));
 			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
 			{
@@ -3170,16 +3262,43 @@ void PNMsolver::para_cal(double mode)
 			{
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			temp2 = abs(Slip * Pb[Tb_in[i].ID_2].km * Tb_in[i].Radiu * angle2 / (Average_visco * length2));
+
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity);
+			double w_max{0};
+			if (Pb[Tb_in[i].ID_2].type == 1)
+			{
+				w_max = Pb[Tb_in[i].ID_2].Radiu; 
+			}
+			else
+			{
+				w_max = voxel_size; // 1nm
+			}
+			double K = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max);
+			// double K = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max)[0];
+			// double average_pore_size = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max)[1];
+			// file_out << Tb_in[i].ID_2 << "\t" << average_pore_size/1e-9  << "\t" << Pb[Tb_in[i].ID_2].type << "\t" << Pb[Tb_in[i].ID_2].Radiu << endl;
+			
+			temp2 = abs(K * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
+
+			if (std::isnan(temp1) || std::isinf(temp1)) {
+				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
+			} 
+
+			if (std::isnan(temp2) || std::isinf(temp2)) {
+				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
+			} 
 			temp11 = abs(pi * Pb[Tb_in[i].ID_1].Radiu * Ds * n_max_ad);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
-			Tb_in[i].Surface_diff_conduc = 0;
+			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+			// Tb_in[i].Surface_diff_conduc = 0;
 		}
 		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
 		{
-			temp2 = Slip * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 3) / (8 * Average_visco);
+			double Slip2 = 1;
+			temp2 = Slip2 * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 3) / (8 * Pb[Tb_in[i].ID_2].visco);
 			length1 = sqrt(pow(Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z, 2));
 			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
 			{
@@ -3193,17 +3312,38 @@ void PNMsolver::para_cal(double mode)
 			{
 				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
 			}
-			temp1 = abs(Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
+
+			double w_max{0};
+			if (Pb[Tb_in[i].ID_1].type == 1)
+			{
+				w_max = Pb[Tb_in[i].ID_1].Radiu; 
+			}
+			else
+			{
+				w_max = voxel_size; // 1nm
+			}
+			
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity);
+			double K = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max);
+			// double K = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max)[0];
+			// double average_pore_size = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max)[1];
+			// file_out << Tb_in[i].ID_1 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu << endl;
+
+			temp1 = abs(K * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
 
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(pi * Pb[Tb_in[i].ID_2].Radiu * Ds * n_max_ad);
+			if (std::isnan(temp1) || std::isinf(temp1)) {
+				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
+			} 
+
+			if (std::isnan(temp2) || std::isinf(temp2)) {
+				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
+			} 
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
-			Tb_in[i].Surface_diff_conduc = 0;
-		}
-		else if (Tb_in[i].ID_1 < macro_n + m_inlet || Tb_in[i].ID_1 >= pn - m_outlet || Tb_in[i].ID_2 < macro_n + m_inlet || Tb_in[i].ID_2 >= pn - m_outlet)
-		{
-			Tb_in[i].Conductivity = Slip * ko * Tb_in[i].Radiu / (Average_visco * Tb_in[i].Length);
-			Tb_in[i].Surface_diff_conduc = 0;
+			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+			// Tb_in[i].Surface_diff_conduc = 0;
 		}
 		else
 		{
@@ -3224,15 +3364,56 @@ void PNMsolver::para_cal(double mode)
 				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			temp1 = abs(Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
-			temp2 = abs(Slip * Pb[Tb_in[i].ID_2].km * Tb_in[i].Radiu * angle2 / (Average_visco * length2));
+			 
+			double w_max1, w_max2 {0};
+			if (Pb[Tb_in[i].ID_1].type == 1)
+			{
+				w_max1 = Pb[Tb_in[i].ID_1].Radiu; 
+			}
+			else
+			{
+				w_max1 = voxel_size; // 1nm
+			}
+
+			if (Pb[Tb_in[i].ID_2].type == 1)
+			{
+				w_max2 = Pb[Tb_in[i].ID_2].Radiu; 
+			}
+			else
+			{
+				w_max2 = voxel_size; // 1nm
+			}
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity);
+			double K1 = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max1);
+			// double K1 = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max1)[0];
+			// double average_pore_size = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max1)[1];
+			// file_out << Tb_in[i].ID_1 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu << endl;
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity);
+			double K2 = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max2);
+			// double K2 = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max2)[0];
+			// average_pore_size = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max2)[1];
+			// file_out << Tb_in[i].ID_2 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_2].type << "\t" << Pb[Tb_in[i].ID_2].Radiu << endl;
+
+			temp1 = abs(K1 * Tb_in[i].Radiu * angle1 / (Pb[Tb_in[i].ID_1].visco * length1));
+			temp2 = abs(K2 * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
+			if (std::isnan(temp1) || std::isinf(temp1)) {
+				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
+			} 
+
+			if (std::isnan(temp2) || std::isinf(temp2)) {
+				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
+			} 
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
-			Tb_in[i].Surface_diff_conduc = 0;
+			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
 			// cout << temp1 << "\t" << temp2 <<"\t"<< Tb_in[i].Conductivity << endl;
 		}
 	}
+	file_out.close();
+
 	// merge throat
 	int label = 0;
 	Tb[0].ID_1 = Tb_in[0].ID_1;
@@ -3261,6 +3442,15 @@ void PNMsolver::para_cal(double mode)
 		}
 	}
 
+	// ofstream Tb_out("Tb_debug.txt", ios::app);
+	// for (size_t i = 0; i < 2 * tn; i++)
+	// {
+	// 	Tb_out << Tb_in[i].ID_1 << "\t" << Tb_in[i].ID_2 << "\t" << Tb_in[i].Radiu << "\t" << Tb_in[i].Conductivity << "\t" << Tb_in[i].Surface_diff_conduc << "\t" << Tb_in[i].Knusen << "\t" << Tb_in[i].Slip << endl;
+	// }
+	// Tb_out.close();
+	
+
+	// full_coord
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(int(OMP_PARA))
 #endif
@@ -3277,6 +3467,7 @@ void PNMsolver::para_cal(double mode)
 		Pb[Tb[i].ID_1].full_coord += 1;
 	}
 
+	// full_accum
 	Pb[0].full_accum = Pb[0].full_coord;
 
 	for (int i = 1; i < pn; i++)
@@ -3284,9 +3475,9 @@ void PNMsolver::para_cal(double mode)
 		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
 	}
 #ifdef _OPENMP
-	double end = omp_get_wtime();
-	printf("para_cal diff = %.16g\n",
-		   end - start);
+double end = omp_get_wtime();
+printf("para_cal diff = %.16g\n",
+		end - start);
 #endif
 }
 
@@ -5801,14 +5992,12 @@ double start = omp_get_wtime();
 		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
 		double Average_compre = (Pb[Tb_in[i].ID_1].compre + Pb[Tb_in[i].ID_2].compre) / 2;
 		double Average_visco = (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2;
+
 		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
 		{
 			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Tb_in[i].Radiu * 2);
 		}
-		else
-		{
-			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Pb[Tb_in[i].ID_1].radius_micro + Pb[Tb_in[i].ID_2].radius_micro);
-		}
+
 		// 计算滑移项
 		double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
 		double beta = 4;
@@ -5826,7 +6015,8 @@ double start = omp_get_wtime();
 		}
 		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
 		{
-			temp1 = Slip * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 3) / (8 * Average_visco);
+			double Slip1= PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_1].visco,Pb[Tb_in[i].ID_1].pressure + refer_pressure,Pb[Tb_in[i].ID_1].compre,Temperature,Pb[Tb_in[i].ID_1].visco));
+			temp1 = Slip1 * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 3) / (8 * Pb[Tb_in[i].ID_1].visco);
 			length2 = sqrt(pow(Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z, 2));
 			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
 			{
@@ -5840,16 +6030,39 @@ double start = omp_get_wtime();
 			{
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			temp2 = abs(Slip * Pb[Tb_in[i].ID_2].km * Tb_in[i].Radiu * angle2 / (Average_visco * length2));
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity);
+			double w_max{0};
+			if (Pb[Tb_in[i].ID_2].type == 1)
+			{
+				w_max = Pb[Tb_in[i].ID_2].Radiu; 
+			}
+			else
+			{
+				w_max = voxel_size; // 1nm
+			}
+			double K = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
+			// double K1 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
+			
+			temp2 = abs(K * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
+
+			if (std::isnan(temp1) || std::isinf(temp1)) {
+				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
+			} 
+
+			if (std::isnan(temp2) || std::isinf(temp2)) {
+				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
+			} 
 			temp11 = abs(pi * Pb[Tb_in[i].ID_1].Radiu * Ds * n_max_ad);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+			// Tb_in[i].Surface_diff_conduc = 0;
 		}
 		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
 		{
-			temp2 = Slip * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 3) / (8 * Average_visco);
+			double Slip2= PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_2].visco,Pb[Tb_in[i].ID_2].pressure + refer_pressure,Pb[Tb_in[i].ID_2].compre,Temperature,Pb[Tb_in[i].ID_2].visco));
+			temp2 = Slip2 * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 3) / (8 * Pb[Tb_in[i].ID_2].visco);
 			length1 = sqrt(pow(Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z, 2));
 			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
 			{
@@ -5863,17 +6076,36 @@ double start = omp_get_wtime();
 			{
 				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
 			}
-			temp1 = abs(Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
+
+			double w_max{0};
+			if (Pb[Tb_in[i].ID_1].type == 1)
+			{
+				w_max = Pb[Tb_in[i].ID_1].Radiu; 
+			}
+			else
+			{
+				w_max = voxel_size; // 1nm
+			}
+			
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity);
+			double K = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
+			// double K1 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
+
+			temp1 = abs(K * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
 
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(pi * Pb[Tb_in[i].ID_2].Radiu * Ds * n_max_ad);
+			if (std::isnan(temp1) || std::isinf(temp1)) {
+				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
+			} 
+
+			if (std::isnan(temp2) || std::isinf(temp2)) {
+				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
+			} 
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
-		}
-		else if (Tb_in[i].ID_1 < macro_n + m_inlet || Tb_in[i].ID_1 >= pn - m_outlet || Tb_in[i].ID_2 < macro_n + m_inlet || Tb_in[i].ID_2 >= pn - m_outlet)
-		{
-			Tb_in[i].Conductivity = Slip * ko * Tb_in[i].Radiu / (Average_visco * Tb_in[i].Length);
-			Tb_in[i].Surface_diff_conduc = Tb_in[i].Radiu * Ds * n_max_ad / Tb_in[i].Length;
+			// Tb_in[i].Surface_diff_conduc = 0;
 		}
 		else
 		{
@@ -5894,12 +6126,48 @@ double start = omp_get_wtime();
 				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			temp1 = abs(Slip * Pb[Tb_in[i].ID_1].km * Tb_in[i].Radiu * angle1 / (Average_visco * length1));
-			temp2 = abs(Slip * Pb[Tb_in[i].ID_2].km * Tb_in[i].Radiu * angle2 / (Average_visco * length2));
+			 
+			double w_max1, w_max2 {0};
+			if (Pb[Tb_in[i].ID_1].type == 1)
+			{
+				w_max1 = Pb[Tb_in[i].ID_1].Radiu; 
+			}
+			else
+			{
+				w_max1 = voxel_size; // 1nm
+			}
+
+			if (Pb[Tb_in[i].ID_2].type == 1)
+			{
+				w_max2 = Pb[Tb_in[i].ID_2].Radiu; 
+			}
+			else
+			{
+				w_max2 = voxel_size; // 1nm
+			}
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity);
+			double K1 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max1);
+			// double K11 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max1);
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity);
+			double K2 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max2);
+			// double K22 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max2);
+
+			temp1 = abs(K1 * Tb_in[i].Radiu * angle1 / (Pb[Tb_in[i].ID_1].visco * length1));
+			temp2 = abs(K2 * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
+			if (std::isnan(temp1) || std::isinf(temp1)) {
+				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
+			} 
+
+			if (std::isnan(temp2) || std::isinf(temp2)) {
+				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
+			} 
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+			// cout << temp1 << "\t" << temp2 <<"\t"<< Tb_in[i].Conductivity << endl;
 		}
 	}
 
@@ -5949,14 +6217,15 @@ double start = omp_get_wtime();
 
 	// full_accum
 	Pb[0].full_accum = Pb[0].full_coord;
+
 	for (int i = 1; i < pn; i++)
 	{
 		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
 	}
 #ifdef _OPENMP
-	double end = omp_get_wtime();
-	printf("para_cal diff = %.16g\n",
-		   end - start);
+double end = omp_get_wtime();
+printf("para_cal diff = %.16g\n",
+		end - start);
 #endif
 	// 参数输出验证
 	/*for (int i = 0;i < pn;i++)
@@ -5968,6 +6237,81 @@ double start = omp_get_wtime();
 	{
 		cout << "ChannelLength[" << i << "]=" << Tb[i].Length << "\t" << "cond[" << i << "]=" << Tb[i].Conductivity << endl;
 	}*/
+}
+
+void PNMsolver::apparent_average_poresize(int i)
+{
+	stringstream ss;
+	ss << i;
+	string filename = "Average_pore_size_apparant_" + ss.str() + ".txt";
+	ofstream file_out(filename);	
+	for (int i = 0; i < 2 * tn; i++)
+	{
+		if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
+		{
+		}
+		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
+		{
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity);
+			double w_max{0};
+			if (Pb[Tb_in[i].ID_2].type == 1)
+			{
+				w_max = Pb[Tb_in[i].ID_2].Radiu; 
+			}
+			else
+			{
+				w_max = voxel_size; // 1nm
+			}
+			double average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max)[1];
+			file_out << Tb_in[i].ID_2 << "\t" << average_pore_size/1e-9  << "\t" << Pb[Tb_in[i].ID_2].type << "\t" << Pb[Tb_in[i].ID_2].Radiu << endl;
+		}
+		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
+		{
+			double w_max{0};
+			if (Pb[Tb_in[i].ID_1].type == 1)
+			{
+				w_max = Pb[Tb_in[i].ID_1].Radiu; 
+			}
+			else
+			{
+				w_max = voxel_size; // 1nm
+			}
+			
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity);
+			double average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max)[1];
+			file_out << Tb_in[i].ID_1 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu << endl;
+		}
+		else
+		{
+			double w_max1, w_max2 {0};
+			if (Pb[Tb_in[i].ID_1].type == 1)
+			{
+				w_max1 = Pb[Tb_in[i].ID_1].Radiu; 
+			}
+			else
+			{
+				w_max1 = voxel_size; // 1nm
+			}
+
+			if (Pb[Tb_in[i].ID_2].type == 1)
+			{
+				w_max2 = Pb[Tb_in[i].ID_2].Radiu; 
+			}
+			else
+			{
+				w_max2 = 1e-9; // 1nm
+			}
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity);
+			double average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max1)[1];
+			file_out << Tb_in[i].ID_1 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu << endl;
+
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity);
+			average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max2)[1];
+			file_out << Tb_in[i].ID_2 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_2].type << "\t" << Pb[Tb_in[i].ID_2].Radiu << endl;
+		}
+	}
 }
 
 void PNMsolver::AMGX_permeability_solver()
@@ -6038,7 +6382,7 @@ void PNMsolver::AMGX_permeability_solver()
 				 << "inner loop = " << inter_n
 				 << "\t\t" << endl;
 		} while (norm_inf > eps_per);
-
+		// apparent_average_poresize(i);
 		macro = macro_outlet_Q();
 		micro_advec = micro_outlet_advec_Q();
 		micro_diff = micro_outlet_diff_Q();
@@ -7536,7 +7880,7 @@ int main(int argc, char **argv)
 	// for (size_t i = 1; i < 51; i++)
 	// {
 	// 	Berea.Function_DS(i * 1e6);
-	// 	Berea.micro_permeability(i * 1e6);
+	// 	Berea.micro_permeability(i * 1e6,1e-9);
 	// }
 
 	/*展示*/
@@ -7562,17 +7906,18 @@ int main(int argc, char **argv)
 	// ofstream Tij("Tij.txt");
 	// for (size_t i = 1; i < 51; i++)
 	// {
-	// 	auto pressure = i * 1e6;
-	// 	auto R = 75e-9;
-	// 	auto z{Berea.compre(pressure)};
-	// 	auto vis(Berea.visco(pressure, z, Temperature));
-	// 	double rho = 0.016 * pressure / (z * 8.314 * Temperature);
-	// 	auto Knusen_number = vis / pressure * sqrt(pi * z * 8.314 * Temperature / (2 * 0.016)) / R;
+	// 	Berea.Function_DS(i * 1e6);
+	// 	double pre = i * 1e6; // 压力 Pa
+	// 	double ko = 1249.11e-21;
+	// 	double W = 50e-9;
+	// 	double z = Berea.compre(pre);
+	// 	double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3
+	// 	double viscos = Berea.visco(pre, z, Temperature);				// pa.s
+	// 	double Knusen_number = viscos / pre * sqrt(pi * z * 8.314 * Temperature / (2 * 0.016)) / (W);
 	// 	double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
 	// 	double beta = 4;
 	// 	double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
-	// 	auto out = Slip * pi * pow(R, 4) / (8 * vis * R);
-	// 	Tij << "Tij=" << out << ";Knusen_number=" << Knusen_number << ";slip=" << Slip << ";pressure=" << pressure / 1e6 << endl;
+	// 	Tij << (viscos * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * pre, 2) / rho_g + Slip * ko) / 1e-21 << endl;
 	// }
 	// Tij.close();
 
