@@ -17,8 +17,9 @@ private:
     double Average_pressure = 1e6; // 平均压力
     double Average_compre =1; // 平均压缩系数
     double Average_visco = 1.4e-5; // 平均粘度
-    double Temperature = 298.15; // 温度，单位为K
-    double phi = 0.1; // 孔隙度
+    double refer_pressure = 1e6; // 参考压力
+    double Temperature = 400; // 温度，单位为K
+    double phi = 0.135; // 孔隙度
     double tao = 1.5; // 迂曲度
     double mean_free_path = 1e-9; // 平均自由程
     
@@ -107,13 +108,14 @@ public:
     }
 
    // 修改Average_pressure，Average_compre和Temperature的值
-    void setParameters(double pressure, double compre, double temp, double visco, double phi_value, double tao_value) {
+    void setParameters(double pressure, double compre, double temp, double visco, double phi_value, double tao_value, double refer_pressure_value) {
         Average_pressure = pressure;
         Average_compre = compre;    
         Temperature = temp;
         Average_visco = visco;
         phi = phi_value;
         tao = tao_value;
+        refer_pressure = refer_pressure_value;
     }
 
     double knusen(double Average_visco,double Average_pressure, double Average_compre, double Temperature, double w) const {
@@ -327,6 +329,75 @@ public:
         return arr;
     };
 
+    double calculate_Ka_from_Wbar(double w1, double w2){
+        // double w_bar_bar = calculate_Permeability_aver_intri(min_w(),w2)[1];
+        // double w_bar = calculate_Permeability_aver(min_w(),w2)[1];
+        // 2 nm	4 nm	7.59 nm	13.58 nm
+        // 4nm	8 nm	16 nm	32 nm
+		// double W{0}; 
+        // if (w2 <= 5e-9) {
+        //     W = 2e-9; // 2 nm
+        // } else if (5E-9 < w2 && w2 <= 9e-9) {
+        //     W = 4e-9; // 4 nm
+        // } else if (9E-9 < w2 && w2 <= 17e-9) {
+        //     W = 7.59e-9; // 8 nm
+        // } else if (17E-9 < w2 && w2 <= 33e-9) {
+        //     W = 13.58e-9; // 16 nm
+        // }
+        // double ko = pow(W,2) * 0.134 / 1.5 / 32;
+        // double pre = Average_pressure;
+		// double z = Average_compre;
+		// double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3
+		// double viscos = Average_visco;				// pa.s
+		// double Knusen_number = viscos / pre * sqrt(M_PI * z * 8.314 * Temperature / (2 * 0.016)) / (W);
+		// double alpha = 1.358 * 2 / M_PI * atan(4 * pow(Knusen_number, 0.4));
+		// double beta = 4;
+		// double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
+		// double K_apparent_w =  Slip * ko;
+
+		// double K_apparent = calculate_Permeability_aver(min_w(),w2)[0];
+
+        // std::array<double,2>arr = {K_apparent_w, K_apparent};
+        return  K_apparent(w2);
+        // return  calculate_Permeability_aver(min_w(),w2)[0];
+    }
+double K_apparent(double w2)
+{
+		std::array<double,50> four_nm = {258.972,130.019,88.5088,68.3174,56.4799,48.7471,43.3246,39.3269,36.2678,33.8588,31.9178,30.3248,28.9971,27.876,26.919,26.0942,25.3774,24.75,24.1971,23.7071,23.2706,22.8799,22.5286,22.2116,21.9243,21.6633,21.4253,21.2076,21.008,20.8245,20.6554,20.4993,20.3547,20.2206,20.096,19.98,19.8719,19.7708,19.6763,19.5877,19.5046,19.4264,19.3529,19.2837,19.2183,19.1566,19.0983,19.043,18.9907,18.9411};
+		std::array<double,50> eight_nm = {499.55,262.192,186.507,149.79,128.266,114.191,104.307,97.008,91.4142,87.0024,83.443,80.5178,78.0768,76.0137,74.2507,72.73,71.4074,70.2487,69.2271,68.3212,67.5137,66.7905,66.1401,65.5528,65.0205,64.5366,64.0952,63.6914,63.321,62.9805,62.6666,62.3766,62.1081,61.8591,61.6276,61.4121,61.2111,61.0232,60.8475,60.6828,60.5282,60.3829,60.2462,60.1173,59.9958,59.881,59.7724,59.6697,59.5723,59.4799};
+		std::array<double,50> sixteen_nm = {963.623,545.765,412.693,347.974,309.923,284.975,267.415,254.424,244.451,236.575,230.214,224.98,220.61,216.913,213.753,211.025,208.651,206.571,204.736,203.108,201.657,200.357,199.188,198.131,197.174,196.303,195.509,194.783,194.116,193.503,192.938,192.416,191.933,191.484,191.068,190.679,190.317,189.979,189.663,189.366,189.087,188.826,188.579,188.347,188.128,187.922,187.726,187.541,187.365,187.199};
+		std::array<double,50> thirty_2_nm = {1815.14,1142,926.504,821.252,759.183,718.4,689.649,668.353,651.991,639.06,628.61,620.01,612.825,606.746,601.547,597.059,593.154,589.731,586.711,584.032,581.643,579.503,577.578,575.839,574.263,572.829,571.521,570.325,569.228,568.218,567.288,566.428,565.632,564.893,564.207,563.568,562.972,562.414,561.893,561.404,560.946,560.515,560.109,559.727,559.366,559.026,558.703,558.398,558.109,557.835};
+		std::array<double,50> sixty_4_nm = {4993.55,3606.34,3158.34,2938.48,2808.45,2722.86,2662.46,2617.68,2583.25,2556.04,2534.04,2515.93,2500.79,2487.99,2477.04,2467.58,2459.35,2452.14,2445.78,2440.13,2435.1,2430.59,2426.53,2422.87,2419.55,2416.52,2413.77,2411.25,2408.93,2406.81,2404.85,2403.03,2401.36,2399.8,2398.35,2397.01,2395.75,2394.58,2393.48,2392.45,2391.48,2390.57,2389.72,2388.91,2388.15,2387.43,2386.75,2386.11,2385.5,2384.92};
+		double K_apparent_w{0};  	
+        if (w2 <= 5e-9) {
+			int index = int(refer_pressure / 1e6) - 1;
+            K_apparent_w = four_nm[index]*1e-21; // 2 nm
+        } else if (5E-9 < w2 && w2 <= 9e-9) {
+			int index = int(refer_pressure / 1e6) - 1;
+            K_apparent_w = eight_nm[index]*1e-21; // 2 nm
+        } else if (9E-9 < w2 && w2 <= 17e-9) {
+			int index = int(refer_pressure / 1e6) - 1;
+            K_apparent_w = sixteen_nm[index]*1e-21; // 2 nm
+        } else if (17E-9 < w2 && w2 <= 33e-9) {
+			int index = int(refer_pressure / 1e6) - 1;
+            K_apparent_w = thirty_2_nm[index]*1e-21; // 2 nm
+        } else if (33E-9 < w2 && w2 <= 65e-9) {
+			int index = int(refer_pressure / 1e6) - 1;
+            K_apparent_w = sixty_4_nm[index]*1e-21; // 2 nm
+        }
+		
+		// double ko = pow(W,2) * 0.134 / 1.5 / 32;
+        // double pre = Average_pressure;
+		// double z = Average_compre;
+		// double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3
+		// double viscos = Average_visco;				// pa.s
+		// double Knusen_number = viscos / pre * sqrt(M_PI * z * 8.314 * Temperature / (2 * 0.016)) / (W);
+		// double alpha = 1.358 * 2 / M_PI * atan(4 * pow(Knusen_number, 0.4));
+		// double beta = 4;
+		// double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
+		// double K_apparent_w =  Slip * ko;
+		return K_apparent_w;
+}
     // 获取dv/dw(w)的函数
     double get_dvdw(double w) const {
         // 检查是否在数据范围内
