@@ -282,7 +282,7 @@ public:
         return integral;
     }
 
-    // 计算渗透率
+    // 计算每个microporosity的表观渗透率
     double calculatePermeability(double w1, double w2) const {
         double integral = integrate(w1, w2);
         double V = integrate2(w1, w2);
@@ -290,26 +290,26 @@ public:
         return K;
     }
 
-    // 计算渗透率
+    // 计算每个microporosity的本征渗透率
     double calculatePermeability_intrin(double w1, double w2) const {
         double integral = integrate_intrin(w1, w2);
         double V = integrate2(w1, w2);
         double K = integral / V / 32.0 * phi / tao; // 假设常数为32.0
         return K;
     }
-
+    // 计算每个microporosity的平均表观孔径
     double calculate_mean_poresize(double w1, double w2) {
         mean_free();
         equation_solve solver(mean_free_path);
         double L = solver.solveForL(integrate(w1, w2)/integrate2(w1,w2));
         return L;
     };    
-
+    // 计算每个microporosity的平均本征孔径
     double calculate_mean_poresize_intrin(double w1, double w2) {
         double L = sqrt(integrate_intrin(w1, w2)/integrate2(w1,w2));
         return L;
     };    
-
+    // 计算每个microporosity的平均表观渗透率和平均孔径
     std::array<double,2> calculate_Permeability_aver(double w1, double w2){
         mean_free();
         equation_solve solver(mean_free_path);
@@ -319,7 +319,7 @@ public:
         std::array<double,2>arr = {K, W_bar};
         return arr;
     };
-
+    // 计算每个microporosity的平均本征渗透率和平均孔径
     std::array<double,2> calculate_Permeability_aver_intri(double w1, double w2){
         equation_solve solver(mean_free_path);
         double W_bar = calculate_mean_poresize_intrin(w1,w2);
@@ -334,7 +334,7 @@ public:
         // double w_bar = calculate_Permeability_aver(min_w(),w2)[1];
         // 2 nm	4 nm	7.59 nm	13.58 nm
         // 4nm	8 nm	16 nm	32 nm
-		// double W{0}; 
+		// double W{6.4e-9}; 
         // if (w2 <= 5e-9) {
         //     W = 2e-9; // 2 nm
         // } else if (5E-9 < w2 && w2 <= 9e-9) {
@@ -344,6 +344,7 @@ public:
         // } else if (17E-9 < w2 && w2 <= 33e-9) {
         //     W = 13.58e-9; // 16 nm
         // }
+
         // double ko = pow(W,2) * 0.134 / 1.5 / 32;
         // double pre = Average_pressure;
 		// double z = Average_compre;
@@ -354,12 +355,17 @@ public:
 		// double beta = 4;
 		// double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
 		// double K_apparent_w =  Slip * ko;
-
+        
+        // return K_apparent_w; 
 		// double K_apparent = calculate_Permeability_aver(min_w(),w2)[0];
 
         // std::array<double,2>arr = {K_apparent_w, K_apparent};
-        return  K_apparent(w2);
+        // return  K_apparent(w2);
+        return calculatePermeability_intrin(min_w(),w2); // 使用本征渗透率计算
+        // double W = 6.4e-9; //
+        // return pow(W,2) * 0.134 / 1.5 / 32;
         // return  calculate_Permeability_aver(min_w(),w2)[0];
+        // return calculatePermeability(min_w(),w2); // 使用表观渗透率计算
     }
 double K_apparent(double w2)
 {
@@ -385,7 +391,7 @@ double K_apparent(double w2)
 			int index = int(refer_pressure / 1e6) - 1;
             K_apparent_w = sixty_4_nm[index]*1e-21; // 2 nm
         }
-		
+		// double W = 21e-9;
 		// double ko = pow(W,2) * 0.134 / 1.5 / 32;
         // double pre = Average_pressure;
 		// double z = Average_compre;
