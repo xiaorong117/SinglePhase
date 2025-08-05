@@ -360,12 +360,12 @@ public:
 		// double K_apparent = calculate_Permeability_aver(min_w(),w2)[0];
 
         // std::array<double,2>arr = {K_apparent_w, K_apparent};
-        // return  K_apparent(w2);
+        return  K_apparent(w2);
         // return calculatePermeability_intrin(min_w(),w2); // 使用本征渗透率计算
-        // double W = 5.25e-9; //
+        // double W = 6.30e-9; //
         // return pow(W,2) * 0.134 / 1.5 / 32;
         // return  calculate_Permeability_aver(min_w(),w2)[0];
-        return calculatePermeability(min_w(),w2); // 使用表观渗透率计算
+        // return calculatePermeability(min_w(),w2); // 使用表观渗透率计算
     }
 double K_apparent(double w2)
 {

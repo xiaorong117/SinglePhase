@@ -3586,10 +3586,10 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		}
 	}
 
-	// ofstream Tb_out("Tb_debug.txt", ios::app);
+	// ofstream Tb_out("Tb_debug.txt", ios::out);
 	// for (size_t i = 0; i < 2 * tn; i++)
 	// {
-	// 	Tb_out << Tb_in[i].ID_1 << "\t" << Tb_in[i].ID_2 << "\t" << Tb_in[i].Radiu << "\t" << Tb_in[i].Conductivity << "\t" << Tb_in[i].Surface_diff_conduc << "\t" << Tb_in[i].Knusen << "\t" << Tb_in[i].Slip << endl;
+	// 	Tb_out << i << "\t" << Tb_in[i].ID_1 << "\t" << Tb_in[i].ID_2  << "\t" << Tb_in[i].Conductivity  << endl;
 	// }
 	// Tb_out.close();
 	
@@ -7868,45 +7868,45 @@ void PNMsolver::AMGX_solver_intri_permeability_REV()
 
 
 /*贪婪最大路径*/
-	ofstream greedy("throat.txt");
-	for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
-	{		
-		greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length <<  " " << Tb[i].Radiu << endl;
-		// greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << endl;
-	}
-	greedy.close();	
+	// ofstream greedy("throat.txt");
+	// for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
+	// {		
+	// 	greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length <<  " " << Tb[i].Radiu << endl;
+	// 	// greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << endl;
+	// }
+	// greedy.close();	
 
-	ofstream outfile1("inlet.txt");
-	ofstream outfile2("outlet.txt");
-	for (size_t i = 0; i < inlet; i++)
-	{
-		outfile1 << i << endl;
-	}
+	// ofstream outfile1("inlet.txt");
+	// ofstream outfile2("outlet.txt");
+	// for (size_t i = 0; i < inlet; i++)
+	// {
+	// 	outfile1 << i << endl;
+	// }
 
-	for (size_t i = macro_n; i < macro_n + m_inlet; i++)
-	{
-		outfile1 << i << endl;	
-	}
-	outfile1.close();
+	// for (size_t i = macro_n; i < macro_n + m_inlet; i++)
+	// {
+	// 	outfile1 << i << endl;	
+	// }
+	// outfile1.close();
 	
-	for (size_t i = inlet + op; i < macro_n; i++)
-	{
-		outfile2 << i << endl;
-	}
+	// for (size_t i = inlet + op; i < macro_n; i++)
+	// {
+	// 	outfile2 << i << endl;
+	// }
 	
-	for (size_t i = macro_n + m_inlet + mp; i < pn; i++)
-	{
-		outfile2 << i << endl;
-	}
-	outfile2.close();
+	// for (size_t i = macro_n + m_inlet + mp; i < pn; i++)
+	// {
+	// 	outfile2 << i << endl;
+	// }
+	// outfile2.close();
 
-	ofstream outfile3("pore.txt");
-	for (size_t i = 0; i < pn; i++)
-	{
-		outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" << Pb[i].Radiu <<  endl;
-		// outfile3 << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z <<  endl;
-	}
-	outfile3.close();
+	// ofstream outfile3("pore.txt");
+	// for (size_t i = 0; i < pn; i++)
+	// {
+	// 	outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" << Pb[i].Radiu <<  endl;
+	// 	// outfile3 << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z <<  endl;
+	// }
+	// outfile3.close();
 
 
 	macro = macro_outlet_Q();
@@ -8048,45 +8048,45 @@ void PNMsolver::AMGX_permeability_solver(double mode)
 	micro_advec = micro_outlet_advec_Q();
 
 	/*贪婪最大路径*/
-	ofstream greedy("throat.txt");
-	for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
-	{		
-		greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length <<  " " << Tb[i].Radiu << endl;
-		// greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << endl;
-	}
-	greedy.close();	
+	// ofstream greedy("throat.txt");
+	// for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
+	// {		
+	// 	greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length <<  " " << Tb[i].Radiu << endl;
+	// 	// greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << endl;
+	// }
+	// greedy.close();	
 
-	ofstream outfile1("inlet.txt");
-	ofstream outfile2("outlet.txt");
-	for (size_t i = 0; i < inlet; i++)
-	{
-		outfile1 << i << endl;
-	}
+	// ofstream outfile1("inlet.txt");
+	// ofstream outfile2("outlet.txt");
+	// for (size_t i = 0; i < inlet; i++)
+	// {
+	// 	outfile1 << i << endl;
+	// }
 
-	for (size_t i = macro_n; i < macro_n + m_inlet; i++)
-	{
-		outfile1 << i << endl;	
-	}
-	outfile1.close();
+	// for (size_t i = macro_n; i < macro_n + m_inlet; i++)
+	// {
+	// 	outfile1 << i << endl;	
+	// }
+	// outfile1.close();
 	
-	for (size_t i = inlet + op; i < macro_n; i++)
-	{
-		outfile2 << i << endl;
-	}
+	// for (size_t i = inlet + op; i < macro_n; i++)
+	// {
+	// 	outfile2 << i << endl;
+	// }
 	
-	for (size_t i = macro_n + m_inlet + mp; i < pn; i++)
-	{
-		outfile2 << i << endl;
-	}
-	outfile2.close();
+	// for (size_t i = macro_n + m_inlet + mp; i < pn; i++)
+	// {
+	// 	outfile2 << i << endl;
+	// }
+	// outfile2.close();
 
-	ofstream outfile3("pore.txt");
-	for (size_t i = 0; i < pn; i++)
-	{
-		outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" << Pb[i].Radiu <<  endl;
-		// outfile3 << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z <<  endl;
-	}
-	outfile3.close();
+	// ofstream outfile3("pore.txt");
+	// for (size_t i = 0; i < pn; i++)
+	// {
+	// 	outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" << Pb[i].Radiu <<  endl;
+	// 	// outfile3 << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z <<  endl;
+	// }
+	// outfile3.close();
 
 	double end = omp_get_wtime();
 	outfile << "permeability = " << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << " nD" << "\t"
