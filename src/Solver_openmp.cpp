@@ -3348,14 +3348,14 @@ double start = omp_get_wtime();
 	cout << "total_p = " << total_p << endl;
 
 	// 水力传导系数计算
+double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
+GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 #ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
+#pragma omp parallel for num_threads(int(OMP_PARA)) firstprivate(PSD_data) firstprivate(temp1) firstprivate(temp2) firstprivate(temp11) firstprivate(temp22) firstprivate(angle1) firstprivate(angle2) firstprivate(length1) firstprivate(length2)
 #endif
 	for (int i = 0; i < 2 * tn; i++)
 	{
 		// progress_bar(double(i) / double(2 * tn));
-		GasAdsorptionData PSD_data("Pore_size_distribution.txt");
-		double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
 		// 计算克努森数
 		double Knusen_number{0};
 		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
