@@ -411,9 +411,9 @@ public:
 
 	~PNMsolver() // 析构函数，释放动态存储
 	{
-		delete[] dX, B;
-		delete[] ia, ja, a, irn, jcn;
-		delete[] Pb, Tb_in, Tb;
+		// delete[] dX, B;
+		// delete[] ia, ja, a, irn, jcn;
+		// delete[] Pb, Tb_in, Tb;
 	}
 };
 
@@ -1292,6 +1292,7 @@ void PNMsolver::Para_cal_REV(double)
 			Tb[label].ID_1 = Tb_in[i].ID_1;
 			Tb[label].ID_2 = Tb_in[i].ID_2;
 			Tb[label].Radiu = Tb_in[i].Radiu;
+			Tb[label].Length = Tb_in[i].Length;
 			Tb[label].Conductivity = Tb_in[i].Conductivity;
 			Tb[label].Surface_diff_conduc = Tb_in[i].Surface_diff_conduc;
 			Tb[label].Knusen = Tb_in[i].Knusen;
@@ -2627,24 +2628,24 @@ void PNMsolver::Paramentinput()
 					for (int i = 0; i < pn; i++)
 					{
 						double waste{0};
-						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum;
+						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].radius_micro >> Pb[i].porosity >> Pb[i].km;
 						Pb[i].km = ko;
 						Pb[i].porosity = porosity;
 						Pb[i].radius_micro = micro_radius;
 						Pb[i].turosity = 1.5;
 
-						if (Pb[i].type == 1)
-						{
-							double w_max = Pb[i].Radiu * voxel_size;
-							double K = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max);
-							// outfile << Pb[i].X * voxel_size << "\t" << Pb[i].Y * voxel_size  << "\t" << Pb[i].Z * voxel_size << "\t" << K << endl;
-						}
-						else if(Pb[i].type != 0)
-						{
-							double w_max = voxel_size; // 1nm
-							double K = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max);
-							// outfile << Pb[i].X * voxel_size << "\t" << Pb[i].Y * voxel_size << "\t" << Pb[i].Z * voxel_size << "\t" << K << endl;
-						}
+						// if (Pb[i].type == 1)
+						// {
+						// 	double w_max = Pb[i].Radiu * voxel_size;
+						// 	double K = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max);
+						// 	// outfile << Pb[i].X * voxel_size << "\t" << Pb[i].Y * voxel_size  << "\t" << Pb[i].Z * voxel_size << "\t" << K << endl;
+						// }
+						// else if(Pb[i].type != 0)
+						// {
+						// 	double w_max = voxel_size; // 1nm
+						// 	double K = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max);
+						// 	// outfile << Pb[i].X * voxel_size << "\t" << Pb[i].Y * voxel_size << "\t" << Pb[i].Z * voxel_size << "\t" << K << endl;
+						// }
 					}
 					// outfile.close();
 				}
@@ -2702,9 +2703,10 @@ void PNMsolver::Paramentinput()
 					for (int i = 0; i < pn; i++)
 					{
 						double waste{0};
-						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].REV_porosity1 >> Pb[i].radius_micro >> Pb[i].REV_k; // REV
-						Pb[i].REV_porosity2 = Pb[i].REV_porosity1;
-						Pb[i].REV_micro_porosity = 0.1;
+						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].REV_porosity1 >> Pb[i].radius_micro >> Pb[i].REV_k; // REV
+						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
+						// Pb[i].REV_porosity2 = Pb[i].REV_porosity1;
+						// Pb[i].REV_micro_porosity = 0.1;
 					}
 				}
 			}
@@ -2912,9 +2914,9 @@ double start = omp_get_wtime();
 	}
 
 	// 计算压缩系数 气体粘度
-// #ifdef _OPENMP
-// #pragma omp parallel for num_threads(int(OMP_PARA))
-// #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
 	for (int i = 0; i < pn; i++)
 	{
 		// Pb[i].compre = 0.702 * pow(M_E, -2.5 * Tr) * pow(Pr, 2) - 5.524 * pow(M_E, -2.5 * Tr) * Pr + 0.044 * pow(Tr, 2) - 0.164 * Tr + 1.15;
@@ -2951,13 +2953,13 @@ double start = omp_get_wtime();
 	// 水力传导系数计算
 	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
 
+GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 #ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
+#pragma omp parallel for num_threads(int(OMP_PARA)) firstprivate(PSD_data) firstprivate(temp1) firstprivate(temp2) firstprivate(temp11) firstprivate(temp22) firstprivate(angle1) firstprivate(angle2) firstprivate(length1) firstprivate(length2)
 #endif
 	for (int i = 0; i < 2 * tn; i++)
 	{
 		// progress_bar(double(i) / double(2 * tn));
-		GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		// 计算克努森数
 		double Knusen_number{0};
 		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
@@ -2968,6 +2970,7 @@ double start = omp_get_wtime();
 		{
 			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Tb_in[i].Radiu * 2);
 		}
+				
 
 		// 计算滑移项
 		double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
@@ -2983,6 +2986,24 @@ double start = omp_get_wtime();
 			}
 			Tb_in[i].Conductivity = Slip * pi * pow(Tb_in[i].Radiu, 4) / (8 * Average_visco * Tb_in[i].Length);
 			Tb_in[i].Surface_diff_conduc = 0;
+			// Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
+			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
+			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
+			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].x\t" << Pb[Tb_in[i].ID_2].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].y\t" << Pb[Tb_in[i].ID_2].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].z\t" << Pb[Tb_in[i].ID_2].Z << "\t"
+			// 	<< "I\t" << i << "\t"
+			// 	<< "Tb_in[i].center_x\t" << Tb_in[i].center_x << "\t"
+			// 	<< "Tb_in[i].center_y\t" << Tb_in[i].center_y << "\t"
+			// 	<< "Tb_in[i].center_z\t" << Tb_in[i].center_z << "\t"
+			// 	<< "temp1\t" << temp1 << "\t"
+			// 	<< "temp2\t" << temp2 << "\t"
+			// 	<< "SLIP\t" << Slip << endl;
 		}
 		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
 		{
@@ -3030,7 +3051,24 @@ double start = omp_get_wtime();
 
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
-			// Tb_in[i].Surface_diff_conduc = 0;
+			// Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
+			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
+			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
+			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].x\t" << Pb[Tb_in[i].ID_2].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].y\t" << Pb[Tb_in[i].ID_2].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].z\t" << Pb[Tb_in[i].ID_2].Z << "\t"
+			// 	<< "I\t" << i << "\t"
+			// 	<< "Tb_in[i].center_x\t" << Tb_in[i].center_x << "\t"
+			// 	<< "Tb_in[i].center_y\t" << Tb_in[i].center_y << "\t"
+			// 	<< "Tb_in[i].center_z\t" << Tb_in[i].center_z << "\t"
+			// 	<< "temp1\t" << temp1 << "\t"
+			// 	<< "temp2\t" << temp2 << "\t"
+			// 	<< "SLIP\t" << Slip1 << endl;
 		}
 		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
 		{
@@ -3080,7 +3118,24 @@ double start = omp_get_wtime();
 			} 
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
-			// Tb_in[i].Surface_diff_conduc = 0;
+			// Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
+			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
+			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
+			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].x\t" << Pb[Tb_in[i].ID_2].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].y\t" << Pb[Tb_in[i].ID_2].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].z\t" << Pb[Tb_in[i].ID_2].Z << "\t"
+			// 	<< "I\t" << i << "\t"
+			// 	<< "Tb_in[i].center_x\t" << Tb_in[i].center_x << "\t"
+			// 	<< "Tb_in[i].center_y\t" << Tb_in[i].center_y << "\t"
+			// 	<< "Tb_in[i].center_z\t" << Tb_in[i].center_z << "\t"
+			// 	<< "temp1\t" << temp1 << "\t"
+			// 	<< "temp2\t" << temp2 << "\t"
+			// 	<< "SLIP\t" << Slip2 << endl;
 		}
 		else
 		{
@@ -3146,10 +3201,32 @@ double start = omp_get_wtime();
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+			// Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
+			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
+			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
+			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].x\t" << Pb[Tb_in[i].ID_2].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].y\t" << Pb[Tb_in[i].ID_2].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].z\t" << Pb[Tb_in[i].ID_2].Z << "\t"
+			// 	<< "I\t" << i << "\t"
+			// 	<< "Tb_in[i].center_x\t" << Tb_in[i].center_x << "\t"
+			// 	<< "Tb_in[i].center_y\t" << Tb_in[i].center_y << "\t"
+			// 	<< "Tb_in[i].center_z\t" << Tb_in[i].center_z << "\t"
+			// 	<< "temp1\t" << temp1 << "\t"
+			// 	<< "temp2\t" << temp2 << "\t"
+			// 	<< "SLIP\t" << K1 << endl;
+
+
 			// cout << temp1 << "\t" << temp2 <<"\t"<< Tb_in[i].Conductivity << endl;
 		}
+		// Tb_out.close();
 	}
 
+	
 	// merge throat
 	int label = 0;
 	Tb[0].ID_1 = Tb_in[0].ID_1;
@@ -3178,12 +3255,6 @@ double start = omp_get_wtime();
 		}
 	}
 
-	// ofstream Tb_out("Tb_debug_app.txt", ios::app);
-	// for (size_t i = 0; i < 2 * tn; i++)
-	// {
-	// 	Tb_out << Tb_in[i].ID_1 << "\t" << Tb_in[i].ID_2 << "\t" << Tb_in[i].Radiu << "\t" << Tb_in[i].Conductivity << "\t" << Tb_in[i].Surface_diff_conduc << "\t" << Tb_in[i].Knusen << "\t" << Tb_in[i].Slip << endl;
-	// }
-	// Tb_out.close();
 	
 
 	// full_coord
@@ -3195,9 +3266,7 @@ double start = omp_get_wtime();
 		Pb[i].full_coord = 0;
 		Pb[i].full_accum = 0;
 	}
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
-#endif
+
 	for (int i = 0; i <= label; i++)
 	{
 		Pb[Tb[i].ID_1].full_coord += 1;
@@ -3205,6 +3274,7 @@ double start = omp_get_wtime();
 
 	// full_accum
 	Pb[0].full_accum = Pb[0].full_coord;
+
 
 	for (int i = 1; i < pn; i++)
 	{
@@ -3533,9 +3603,7 @@ double start = omp_get_wtime();
 		Pb[i].full_coord = 0;
 		Pb[i].full_accum = 0;
 	}
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
-#endif
+
 	for (int i = 0; i <= label; i++)
 	{
 		Pb[Tb[i].ID_1].full_coord += 1;
@@ -4157,12 +4225,12 @@ void PNMsolver::Eigen_subroutine_per(Eigen::SparseMatrix<double, Eigen::RowMajor
 	std::cout << "estimated error: " << solver.error() << std::endl;
 
 	/*rong debug*/
-	ofstream x_debug("x_debug.txt");
-	for (int i = 0; i < op + mp; i++)
-	{
-		x_debug << "x[" << i << "] = " << x[i] << endl;
-	}
-	x_debug.close();
+	// ofstream x_debug("x_debug.txt");
+	// for (int i = 0; i < op + mp; i++)
+	// {
+	// 	x_debug << "x[" << i << "] = " << x[i] << endl;
+	// }
+	// x_debug.close();
 
 	// 矩阵的无穷阶范数
 	// norm_inf = x.lpNorm<Eigen::Infinity>();
@@ -6060,13 +6128,13 @@ double start = omp_get_wtime();
 	// 水力传导系数计算
 	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
 
+GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 #ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
+#pragma omp parallel for num_threads(int(OMP_PARA)) firstprivate(PSD_data) firstprivate(temp1) firstprivate(temp2) firstprivate(temp11) firstprivate(temp22) firstprivate(angle1) firstprivate(angle2) firstprivate(length1) firstprivate(length2)
 #endif
 	for (int i = 0; i < 2 * tn; i++)
 	{
 		// progress_bar(double(i) / double(2 * tn));
-		GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		// 计算克努森数
 		double Knusen_number{0};
 		double Average_pressure = (Pb[Tb_in[i].ID_1].pressure + Pb[Tb_in[i].ID_2].pressure + refer_pressure + refer_pressure) / 2;
@@ -6077,6 +6145,7 @@ double start = omp_get_wtime();
 		{
 			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Tb_in[i].Radiu * 2);
 		}
+				
 
 		// 计算滑移项
 		double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
@@ -6092,6 +6161,24 @@ double start = omp_get_wtime();
 			}
 			Tb_in[i].Conductivity = Slip * pi * pow(Tb_in[i].Radiu, 4) / (8 * Average_visco * Tb_in[i].Length);
 			Tb_in[i].Surface_diff_conduc = 0;
+			// Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
+			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
+			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
+			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].x\t" << Pb[Tb_in[i].ID_2].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].y\t" << Pb[Tb_in[i].ID_2].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].z\t" << Pb[Tb_in[i].ID_2].Z << "\t"
+			// 	<< "I\t" << i << "\t"
+			// 	<< "Tb_in[i].center_x\t" << Tb_in[i].center_x << "\t"
+			// 	<< "Tb_in[i].center_y\t" << Tb_in[i].center_y << "\t"
+			// 	<< "Tb_in[i].center_z\t" << Tb_in[i].center_z << "\t"
+			// 	<< "temp1\t" << temp1 << "\t"
+			// 	<< "temp2\t" << temp2 << "\t"
+			// 	<< "SLIP\t" << Slip << endl;
 		}
 		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
 		{
@@ -6139,7 +6226,24 @@ double start = omp_get_wtime();
 
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
-			// Tb_in[i].Surface_diff_conduc = 0;
+			// Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
+			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
+			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
+			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].x\t" << Pb[Tb_in[i].ID_2].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].y\t" << Pb[Tb_in[i].ID_2].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].z\t" << Pb[Tb_in[i].ID_2].Z << "\t"
+			// 	<< "I\t" << i << "\t"
+			// 	<< "Tb_in[i].center_x\t" << Tb_in[i].center_x << "\t"
+			// 	<< "Tb_in[i].center_y\t" << Tb_in[i].center_y << "\t"
+			// 	<< "Tb_in[i].center_z\t" << Tb_in[i].center_z << "\t"
+			// 	<< "temp1\t" << temp1 << "\t"
+			// 	<< "temp2\t" << temp2 << "\t"
+			// 	<< "SLIP\t" << Slip1 << endl;
 		}
 		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
 		{
@@ -6189,7 +6293,24 @@ double start = omp_get_wtime();
 			} 
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
-			// Tb_in[i].Surface_diff_conduc = 0;
+			// Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
+			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
+			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
+			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].x\t" << Pb[Tb_in[i].ID_2].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].y\t" << Pb[Tb_in[i].ID_2].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].z\t" << Pb[Tb_in[i].ID_2].Z << "\t"
+			// 	<< "I\t" << i << "\t"
+			// 	<< "Tb_in[i].center_x\t" << Tb_in[i].center_x << "\t"
+			// 	<< "Tb_in[i].center_y\t" << Tb_in[i].center_y << "\t"
+			// 	<< "Tb_in[i].center_z\t" << Tb_in[i].center_z << "\t"
+			// 	<< "temp1\t" << temp1 << "\t"
+			// 	<< "temp2\t" << temp2 << "\t"
+			// 	<< "SLIP\t" << Slip2 << endl;
 		}
 		else
 		{
@@ -6255,10 +6376,43 @@ double start = omp_get_wtime();
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+			// Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
+			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
+			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
+			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].x\t" << Pb[Tb_in[i].ID_2].X << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].y\t" << Pb[Tb_in[i].ID_2].Y << "\t"
+			// 	<< "Pb[Tb_in[i].ID_2].z\t" << Pb[Tb_in[i].ID_2].Z << "\t"
+			// 	<< "I\t" << i << "\t"
+			// 	<< "Tb_in[i].center_x\t" << Tb_in[i].center_x << "\t"
+			// 	<< "Tb_in[i].center_y\t" << Tb_in[i].center_y << "\t"
+			// 	<< "Tb_in[i].center_z\t" << Tb_in[i].center_z << "\t"
+			// 	<< "temp1\t" << temp1 << "\t"
+			// 	<< "temp2\t" << temp2 << "\t"
+			// 	<< "SLIP\t" << K1 << endl;
+
+
 			// cout << temp1 << "\t" << temp2 <<"\t"<< Tb_in[i].Conductivity << endl;
 		}
+		// Tb_out.close();
 	}
 
+
+	// ofstream Tb_out("Tb_out.txt", ios::out);
+	// for (size_t i = 0; i < 2 * tn; i++)
+	// {
+	// 	Tb_out	<< Tb_in[i].ID_1 << "\t"
+	// 			<< Tb_in[i].ID_2 << "\t"
+	// 			<< Tb_in[i].Conductivity << "\t"
+	// 			<< Tb_in[i].Surface_diff_conduc << "\t"
+	// 			<< Tb_in[i].Knusen << endl;
+	// }
+	// Tb_out.close();
+	
 	// merge throat
 	int label = 0;
 	Tb[0].ID_1 = Tb_in[0].ID_1;
@@ -6286,6 +6440,9 @@ double start = omp_get_wtime();
 			Tb[label].Slip = Tb_in[i].Slip;
 		}
 	}
+
+	
+
 	// full_coord
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(int(OMP_PARA))
@@ -6295,9 +6452,7 @@ double start = omp_get_wtime();
 		Pb[i].full_coord = 0;
 		Pb[i].full_accum = 0;
 	}
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
-#endif
+
 	for (int i = 0; i <= label; i++)
 	{
 		Pb[Tb[i].ID_1].full_coord += 1;
@@ -6305,6 +6460,7 @@ double start = omp_get_wtime();
 
 	// full_accum
 	Pb[0].full_accum = Pb[0].full_coord;
+
 
 	for (int i = 1; i < pn; i++)
 	{
@@ -6315,16 +6471,6 @@ double end = omp_get_wtime();
 printf("para_cal diff = %.16g\n",
 		end - start);
 #endif
-	// 参数输出验证
-	/*for (int i = 0;i < pn;i++)
-	{
-		cout << "volume[" << i << "]=" << Pb[i].volume << endl;
-	}*/
-
-	/*for (int i = 738117;i < tn;i++)
-	{
-		cout << "ChannelLength[" << i << "]=" << Tb[i].Length << "\t" << "cond[" << i << "]=" << Tb[i].Conductivity << endl;
-	}*/
 }
 
 void PNMsolver::apparent_average_poresize(int i)
@@ -6460,7 +6606,7 @@ void PNMsolver::AMGX_permeability_solver()
 
 	// ************ begin AMGX solver ************
 	AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
-	for (size_t i = 2; i < 52; i+=2)
+	for (size_t i = 2; i < 52; i++)
 	{
 		para_cal_in_newton();
 		Matrix_permeability();
@@ -6494,7 +6640,7 @@ void PNMsolver::AMGX_permeability_solver()
 				<< (inlet_pre + refer_pressure) / 1e6 << "\t"
 				<< duration2.count() / 1000 << "s" << "\t"
 				<< endl;
-		refer_pressure = i * 1e6;
+		refer_pressure += 1e6;
 		Function_DS(inlet_pre + refer_pressure);
 		initial_condition();
 		total_macro = 0;
@@ -7720,6 +7866,49 @@ void PNMsolver::AMGX_solver_intri_permeability_REV()
 	// ************ begin AMGX solver ************
 	AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 
+
+/*贪婪最大路径*/
+	ofstream greedy("throat.txt");
+	for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
+	{		
+		greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length <<  " " << Tb[i].Radiu << endl;
+		// greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << endl;
+	}
+	greedy.close();	
+
+	ofstream outfile1("inlet.txt");
+	ofstream outfile2("outlet.txt");
+	for (size_t i = 0; i < inlet; i++)
+	{
+		outfile1 << i << endl;
+	}
+
+	for (size_t i = macro_n; i < macro_n + m_inlet; i++)
+	{
+		outfile1 << i << endl;	
+	}
+	outfile1.close();
+	
+	for (size_t i = inlet + op; i < macro_n; i++)
+	{
+		outfile2 << i << endl;
+	}
+	
+	for (size_t i = macro_n + m_inlet + mp; i < pn; i++)
+	{
+		outfile2 << i << endl;
+	}
+	outfile2.close();
+
+	ofstream outfile3("pore.txt");
+	for (size_t i = 0; i < pn; i++)
+	{
+		outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" << Pb[i].Radiu <<  endl;
+		// outfile3 << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z <<  endl;
+	}
+	outfile3.close();
+
+
 	macro = macro_outlet_Q();
 	micro_advec = micro_outlet_advec_Q();
 
@@ -7862,7 +8051,7 @@ void PNMsolver::AMGX_permeability_solver(double mode)
 	ofstream greedy("throat.txt");
 	for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
 	{		
-		greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << endl;
+		greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length <<  " " << Tb[i].Radiu << endl;
 		// greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << endl;
 	}
 	greedy.close();	
@@ -8018,37 +8207,41 @@ int main(int argc, char **argv)
 	// Berea.Eigen_solver_per(1); // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
 	// Berea.AMGX_permeability_solver(1); // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
 	// Berea.AMGX_solver_apparent_permeability_REV();
-	// string filename("64nm.txt");
-	// ofstream output("TEST"+filename);
+	// string filename("128nm.txt");
 	// double diff{0};
-	// double max_w = 64E-9;
+	// double max_w = 128E-9;
+	// ofstream output("K_apparent_" + filename);
+	// GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 	// for (size_t i = 1; i < 100; i++)
 	// {
 	// 	double pre = i * 1e6; // 压力 Pa
 	// 	double Temperature = 400; // 温度 K
 	// 	PSD_data.setParameters(pre,Berea.compre(pre),Temperature,Berea.visco(pre,Berea.compre(pre),Temperature),0.134,1.5,refer_pressure);
 	// 	double w_bar = PSD_data.calculate_Permeability_aver(PSD_data.min_w(),max_w)[1];
-	// 	double K_apparent = PSD_data.calculate_Permeability_aver(PSD_data.min_w(),max_w)[0];
 	// 	double w_bar_bar = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(),max_w)[1];
-
-	// 	double W = w_bar_bar; 
-	// 	double ko = pow(W,2) * 0.134 / 1.5 / 32;
-	// 	double z = Berea.compre(pre);
-	// 	double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3
-	// 	double viscos = Berea.visco(pre, z, Temperature);				// pa.s
-	// 	double Knusen_number = viscos / pre * sqrt(M_PI * z * 8.314 * Temperature / (2 * 0.016)) / (W);
-	// 	double alpha = 1.358 * 2 / M_PI * atan(4 * pow(Knusen_number, 0.4));
-	// 	double beta = 4;
-	// 	double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
 		
-	// 	double K_apparent_w =  Slip * ko;
+	// 	double K_apparent_ori = PSD_data.calculatePermeability(PSD_data.min_w(),max_w);
+	// 	double K_apparent_ave = PSD_data.calculate_Permeability_aver(PSD_data.min_w(),max_w)[0];
+	// 	double k_intri_ave = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(),max_w)[0];
+	// 	double K_intri_ori = PSD_data.calculatePermeability_intrin(PSD_data.min_w(),max_w);
+	// 	// double W = w_bar_bar; 
+	// 	// double ko = pow(W,2) * 0.134 / 1.5 / 32;
+	// 	// double z = Berea.compre(pre);
+	// 	// double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3
+	// 	// double viscos = Berea.visco(pre, z, Temperature);				// pa.s
+	// 	// double Knusen_number = viscos / pre * sqrt(M_PI * z * 8.314 * Temperature / (2 * 0.016)) / (W);
+	// 	// double alpha = 1.358 * 2 / M_PI * atan(4 * pow(Knusen_number, 0.4));
+	// 	// double beta = 4;
+	// 	// double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
+		
+	// 	// double K_apparent_w =  Slip * ko;
 
 	// 	// diff += pow((K_apparent_w - K_apparent)/K_apparent,2);
 	// 	// array<double,2>arr = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(),max_w);
-	// 	output << pre / 1e6 << " \t" << w_bar/1e-9 << "\t" << w_bar_bar/1e-9 << "\t" << K_apparent/1e-21 << "\t" << K_apparent_w/1e-21 << endl;
+	// 	output << "pressure = " << pre / 1e6 << " MPa \t" << "w_bar = " << w_bar/1e-9 << " nm \t" << "w_bar_bar = " << w_bar_bar/1e-9 << " nm \t" << "Ka_ori = "<< K_apparent_ori/1e-21 <<" nD\t" << "Ka_ave = " << K_apparent_ave/1e-21 << " nD\t" << "K_intri_ori = " << K_intri_ori/1e-21  << " nD \t" << "K_intri_ave = " << k_intri_ave / 1E-21 << " nD" << endl;
 	// 	// output << pre / 1e6 << "\t" << arr[0] << "\t" << arr[1] << endl;
 	// }
-	// output << "\t" << ko/1e-21 << "\t" << sqrt(diff) << endl;
+	// // output << "\t" << ko/1e-21 << "\t" << sqrt(diff) << endl;
 	// output.close();
 	// ofstream output2("k_"+filename);
 	// double pre = 1e6; // 压力 Pa
