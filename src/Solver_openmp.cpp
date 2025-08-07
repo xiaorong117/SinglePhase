@@ -40,7 +40,6 @@
 //   }
 const char *sSDKname = "conjugateGradient";
 
-
 #include "PSD.cpp" // 包含PSD类的头文件
 
 #define OMP_PARA 20
@@ -52,19 +51,22 @@ const double CLOCKS_PER_SECOND = ((clock_t)1000);
 double iters_globa{0};
 // GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
-void progress_bar(float progress, int bar_width = 50) {
-    int pos = bar_width * progress;
-    std::cout << "[";
-    for (int i = 0; i < bar_width; ++i) {
-        if (i < pos) std::cout << "=";
-        else if (i == pos) std::cout << ">";
-        else std::cout << " ";
-    }
-    std::cout << "] " << int(progress * 100.0) << " %\r";
-    std::cout.flush();
+void progress_bar(float progress, int bar_width = 50)
+{
+	int pos = bar_width * progress;
+	std::cout << "[";
+	for (int i = 0; i < bar_width; ++i)
+	{
+		if (i < pos)
+			std::cout << "=";
+		else if (i == pos)
+			std::cout << ">";
+		else
+			std::cout << " ";
+	}
+	std::cout << "] " << int(progress * 100.0) << " %\r";
+	std::cout.flush();
 }
-
-
 
 ////常量设置
 double pi = 3.1415927;
@@ -354,15 +356,15 @@ public:
 	void Para_cal_REV(double); //
 	void Para_cal_REV_newton(double);
 
-	void para_cal();				 // 喉道长度等相关参数计算
-	void para_cal_in_newton();		 // 在牛顿迭代中计算 克努森数
-	void para_cal(double);			 // 喉道长度等相关参数计算
-	void para_cal_in_newton(double); // 在牛顿迭代中计算 克努森数
+	void para_cal();					 // 喉道长度等相关参数计算
+	void para_cal_in_newton();			 // 在牛顿迭代中计算 克努森数
+	void para_cal(double);				 // 喉道长度等相关参数计算
+	void para_cal_in_newton(double);	 // 在牛顿迭代中计算 克努森数
 	void apparent_average_poresize(int); // 计算表观平均孔径
 
 	double compre(double pressure); // 压缩系数
 	double visco(double pressure, double z, double T);
-	double micro_permeability(double pre,double);
+	double micro_permeability(double pre, double);
 	void Function_DS(double pressure);
 	double Function_Slip(double knusen);
 	double Function_Slip_clay(double knusen);
@@ -380,7 +382,6 @@ public:
 	int conjugateGradient_solver(int iters_, double tol_);
 	void conjugateGradient_solver_per(double);
 	void conjugateGradient_solver_per();
-
 
 	void Matrix_gas_pro_REV();
 	void Matrix_per_REV();
@@ -432,7 +433,7 @@ public:
 
 int PNMsolver::conjugateGradient_solver(int iters_, double tol_)
 {
-    // 矩阵的内存空间CSR
+	// 矩阵的内存空间CSR
 	rows_offsets = ia;
 	columns = ja;
 	values = a;
@@ -440,10 +441,10 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_)
 	clock_t startTime, endTime;
 	startTime = clock();
 
-    int N = op + mp;
-    int nnz = ia[op + mp];
-    const double tol = tol_;
-    const int max_iter = iters_;
+	int N = op + mp;
+	int nnz = ia[op + mp];
+	const double tol = tol_;
+	const int max_iter = iters_;
 	cout << "max_iter:" << max_iter << endl;
 	double a, b, na, r0, r1, rr;
 
@@ -458,13 +459,13 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_)
 	rhs = (double *)malloc(N * sizeof(double));
 	for (size_t i = 0; i < N; i++)
 	{
-        rhs[i] = B[i];
+		rhs[i] = B[i];
 	}
 
 	for (int i = 0; i < N; i++)
 	{
 		x[i] = 0.0;
-    }
+	}
 
 	/* Get handle to the CUBLAS context */
 	cublasHandle_t cublasHandle = 0;
@@ -509,7 +510,7 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_)
 	r0 = 0.;
 
 	/* Allocate workspace for cuSPARSE */
-    size_t bufferSize = 0;
+	size_t bufferSize = 0;
 	checkCudaErrors(cusparseSpMV_bufferSize(
 		cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA, vecx,
 		&beta, vecAx, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
@@ -558,9 +559,10 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_)
 		MYK = k;
 		RESI = sqrt(r1) / sqrt(rr);
 		// 修改开始：每1000步输出一次，包括第一步
-		if (k == 1 || k % 10000 == 0) {
+		if (k == 1 || k % 10000 == 0)
+		{
 			printf("iteration:%3d\nresidual:%e\n", MYK, RESI);
-                }
+		}
 		// 修改结束
 		k++;
 	}
@@ -584,7 +586,7 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_)
 	// Cuda_data_execel.close();
 
 	cudaMemcpy(x, d_x, N * sizeof(double), cudaMemcpyDeviceToHost);
-    
+
 	// ofstream out("answer2.txt");
 	// for (int i = 0; i < op + mp; i++)
 	// {
@@ -617,9 +619,9 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_)
 			Pb[i + inlet + outlet + m_inlet].pressure += x[i];
 		}
 	}
-    
-    cusparseDestroy(cusparseHandle);
-    cublasDestroy(cublasHandle);
+
+	cusparseDestroy(cusparseHandle);
+	cublasDestroy(cublasHandle);
 	if (matA)
 	{
 		checkCudaErrors(cusparseDestroySpMat(matA));
@@ -643,7 +645,7 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_)
 	cudaFree(d_r);
 	cudaFree(d_p);
 	cudaFree(d_Ax);
-    
+
 	return 0;
 }
 
@@ -2359,9 +2361,9 @@ void PNMsolver::Eigen_solver_per(double i)
 	auto start1 = high_resolution_clock::now();
 	double macro{0}, micro_advec{0}, micro_diff{0};
 
-	int n = 1;													   // label of output file
-	int inter_n{0};												   // The interation of outer loop of Newton-raphoon method
-	double total_flow = 0;										   // accumulation production
+	int n = 1;																 // label of output file
+	int inter_n{0};															 // The interation of outer loop of Newton-raphoon method
+	double total_flow = 0;													 // accumulation production
 	ofstream outfile("Intrinsic_Permeability_Eigen_BiCGSTAB.txt", ios::app); // output permeability;
 
 	Flag_eigen = true;
@@ -2393,16 +2395,15 @@ void PNMsolver::Eigen_solver_per(double i)
 	outfile.close();
 }
 
-
 void PNMsolver::conjugateGradient_solver_per(double i)
 {
 	refer_pressure = 0;
 	auto start1 = high_resolution_clock::now();
 	double macro{0}, micro_advec{0}, micro_diff{0};
 
-	int n = 1;													   // label of output file
-	int inter_n{0};												   // The interation of outer loop of Newton-raphoon method
-	double total_flow = 0;										   // accumulation production
+	int n = 1;													 // label of output file
+	int inter_n{0};												 // The interation of outer loop of Newton-raphoon method
+	double total_flow = 0;										 // accumulation production
 	ofstream outfile("Intrinsic_Permeability_CG.txt", ios::app); // output permeability;
 
 	Flag_eigen = false;
@@ -2431,16 +2432,15 @@ void PNMsolver::conjugateGradient_solver_per(double i)
 	outfile.close();
 }
 
-
 void PNMsolver::conjugateGradient_solver_per()
 {
 	auto start1 = high_resolution_clock::now();
 	double macro{0}, micro_advec{0}, micro_diff{0};
 
-	int n = 1;											 // label of output file
-	int inter_n{0};										 // The interation of outer loop of Newton-raphoon method
-	double total_flow = 0;								 // accumulation production
-	ofstream outfile("Apparent_Permeability_CG.txt",ios::app); // output permeability;
+	int n = 1;													// label of output file
+	int inter_n{0};												// The interation of outer loop of Newton-raphoon method
+	double total_flow = 0;										// accumulation production
+	ofstream outfile("Apparent_Permeability_CG.txt", ios::app); // output permeability;
 	Flag_eigen = false;
 	Flag_intri_per = false;
 	Function_DS(inlet_pre + refer_pressure);
@@ -2935,7 +2935,7 @@ void PNMsolver::Paramentinput()
 							double K = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max);
 							// outfile << Pb[i].X * voxel_size << "\t" << Pb[i].Y * voxel_size  << "\t" << Pb[i].Z * voxel_size << "\t" << K << endl;
 						}
-						else if(Pb[i].type != 0)
+						else if (Pb[i].type != 0)
 						{
 							double w_max = voxel_size; // 1nm
 							double K = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max);
@@ -2984,7 +2984,7 @@ void PNMsolver::Paramentinput()
 						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].REV_porosity1 >> Pb[i].radius_micro >> Pb[i].REV_k; // REV
 						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
 						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].type; // REV
-						if (Pb[i].type == 0)																							// CLAY-HP																					// CLAY-HP																							// 粘土
+						if (Pb[i].type == 0) // CLAY-HP																					// CLAY-HP																							// 粘土
 						{
 							Pb[i].REV_porosity1 = porosity_clay_HP1;
 							Pb[i].REV_porosity2 = porosity_clay_HP2;
@@ -3028,16 +3028,14 @@ void PNMsolver::Paramentinput()
 						double waste{0};
 						// porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].REV_porosity1 >> Pb[i].radius_micro >> Pb[i].REV_k; // REV
 						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum; // REV
-						// Pb[i].REV_porosity2 = Pb[i].REV_porosity1;
-						// Pb[i].REV_micro_porosity = 0.1;
+																																		// Pb[i].REV_porosity2 = Pb[i].REV_porosity1;
+																																		// Pb[i].REV_micro_porosity = 0.1;
 					}
 				}
 			}
 			porefile.close();
 		}
 	}
-
-
 
 	if (flag == false)
 	{
@@ -3089,7 +3087,7 @@ void PNMsolver::Paramentinput()
 
 	for (int i = 0; i < 2 * tn; i++)
 	{
-		if(Flag_Hybrid == 1)
+		if (Flag_Hybrid == 1)
 		{
 			if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
 			{
@@ -3182,7 +3180,7 @@ void PNMsolver::Paramentinput(int i) // 非均质微孔区域
 
 	for (int i = 0; i < 2 * tn; i++)
 	{
-		if(Flag_Hybrid == 1)
+		if (Flag_Hybrid == 1)
 		{
 			if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n)
 			{
@@ -3217,11 +3215,11 @@ void PNMsolver::para_cal()
 {
 	// 计算孔隙的体积
 #ifdef _OPENMP
-double start = omp_get_wtime();
+	double start = omp_get_wtime();
 #pragma omp parallel for num_threads(int(OMP_PARA))
 #endif
 	for (int i = 0; i < pn; i++)
-	{	
+	{
 		if (Pb[i].type == 0)
 		{
 			Pb[i].volume = 4 * pi * pow(Pb[i].Radiu, 3) / 3; // 孔隙网络单元
@@ -3276,7 +3274,7 @@ double start = omp_get_wtime();
 	// 水力传导系数计算
 	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
 
-GasAdsorptionData PSD_data("Pore_size_distribution.txt");
+	GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(int(OMP_PARA)) firstprivate(PSD_data) firstprivate(temp1) firstprivate(temp2) firstprivate(temp11) firstprivate(temp22) firstprivate(angle1) firstprivate(angle2) firstprivate(length1) firstprivate(length2)
 #endif
@@ -3293,7 +3291,6 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		{
 			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Tb_in[i].Radiu * 2);
 		}
-				
 
 		// 计算滑移项
 		double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
@@ -3313,7 +3310,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
 			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
 			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
-			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
@@ -3330,7 +3327,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		}
 		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
 		{
-			double Slip1= PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_1].visco,Pb[Tb_in[i].ID_1].pressure + refer_pressure,Pb[Tb_in[i].ID_1].compre,Temperature,Pb[Tb_in[i].ID_1].visco));
+			double Slip1 = PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco));
 			temp1 = Slip1 * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 3) / (8 * Pb[Tb_in[i].ID_1].visco);
 			length2 = sqrt(pow(Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z, 2));
 			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
@@ -3345,11 +3342,11 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			{
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity, Pb[Tb_in[i].ID_2].turosity, refer_pressure, Flag_intri_per);
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
-				w_max = Pb[Tb_in[i].ID_2].Radiu; 
+				w_max = Pb[Tb_in[i].ID_2].Radiu;
 			}
 			else
 			{
@@ -3362,13 +3359,15 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			temp2 = abs(K * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
 
-			if (std::isnan(temp1) || std::isinf(temp1)) {
+			if (std::isnan(temp1) || std::isinf(temp1))
+			{
 				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
-			} 
+			}
 
-			if (std::isnan(temp2) || std::isinf(temp2)) {
+			if (std::isnan(temp2) || std::isinf(temp2))
+			{
 				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
-			} 
+			}
 			temp11 = abs(pi * Pb[Tb_in[i].ID_1].Radiu * Ds * n_max_ad);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 
@@ -3378,7 +3377,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
 			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
 			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
-			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
@@ -3395,7 +3394,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		}
 		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
 		{
-			double Slip2= PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_2].visco,Pb[Tb_in[i].ID_2].pressure + refer_pressure,Pb[Tb_in[i].ID_2].compre,Temperature,Pb[Tb_in[i].ID_2].visco));
+			double Slip2 = PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco));
 			temp2 = Slip2 * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 3) / (8 * Pb[Tb_in[i].ID_2].visco);
 			length1 = sqrt(pow(Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z, 2));
 			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
@@ -3414,15 +3413,14 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_1].type == 1)
 			{
-				w_max = Pb[Tb_in[i].ID_1].Radiu; 
+				w_max = Pb[Tb_in[i].ID_1].Radiu;
 			}
 			else
 			{
 				w_max = voxel_size; // 1nm
 			}
-			
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity, Pb[Tb_in[i].ID_1].turosity, refer_pressure, Flag_intri_per);
 			// double K = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
 			// double K = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max)[0];
 			double K = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max);
@@ -3432,20 +3430,22 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(pi * Pb[Tb_in[i].ID_2].Radiu * Ds * n_max_ad);
-			if (std::isnan(temp1) || std::isinf(temp1)) {
+			if (std::isnan(temp1) || std::isinf(temp1))
+			{
 				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
-			} 
+			}
 
-			if (std::isnan(temp2) || std::isinf(temp2)) {
+			if (std::isnan(temp2) || std::isinf(temp2))
+			{
 				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
-			} 
+			}
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
 			// Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
 			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
 			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
 			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
-			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
@@ -3479,11 +3479,11 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			 
-			double w_max1, w_max2 {0};
+
+			double w_max1, w_max2{0};
 			if (Pb[Tb_in[i].ID_1].type == 1)
 			{
-				w_max1 = Pb[Tb_in[i].ID_1].Radiu; 
+				w_max1 = Pb[Tb_in[i].ID_1].Radiu;
 			}
 			else
 			{
@@ -3492,20 +3492,20 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
-				w_max2 = Pb[Tb_in[i].ID_2].Radiu; 
+				w_max2 = Pb[Tb_in[i].ID_2].Radiu;
 			}
 			else
 			{
 				w_max2 = voxel_size; // 1nm
 			}
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity, Pb[Tb_in[i].ID_1].turosity, refer_pressure, Flag_intri_per);
 			// double K1 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max1);
 			// double K1 = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max1)[0];
 			double K1 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max1);
 			// double K1 = K_apparent(w_max1);
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity, Pb[Tb_in[i].ID_2].turosity, refer_pressure, Flag_intri_per);
 			// double K2 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max2);
 			// double K2 = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max2)[0];
 			double K2 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max2);
@@ -3513,13 +3513,15 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			temp1 = abs(K1 * Tb_in[i].Radiu * angle1 / (Pb[Tb_in[i].ID_1].visco * length1));
 			temp2 = abs(K2 * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
-			if (std::isnan(temp1) || std::isinf(temp1)) {
+			if (std::isnan(temp1) || std::isinf(temp1))
+			{
 				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
-			} 
+			}
 
-			if (std::isnan(temp2) || std::isinf(temp2)) {
+			if (std::isnan(temp2) || std::isinf(temp2))
+			{
 				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
-			} 
+			}
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
@@ -3528,7 +3530,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
 			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
 			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
-			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
@@ -3543,13 +3545,11 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// 	<< "temp2\t" << temp2 << "\t"
 			// 	<< "SLIP\t" << K1 << endl;
 
-
 			// cout << temp1 << "\t" << temp2 <<"\t"<< Tb_in[i].Conductivity << endl;
 		}
 		// Tb_out.close();
 	}
 
-	
 	// merge throat
 	int label = 0;
 	Tb[0].ID_1 = Tb_in[0].ID_1;
@@ -3578,8 +3578,6 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		}
 	}
 
-	
-
 	// full_coord
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(int(OMP_PARA))
@@ -3598,15 +3596,14 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 	// full_accum
 	Pb[0].full_accum = Pb[0].full_coord;
 
-
 	for (int i = 1; i < pn; i++)
 	{
 		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
 	}
 #ifdef _OPENMP
-double end = omp_get_wtime();
-printf("para_cal diff = %.16g\n",
-		end - start);
+	double end = omp_get_wtime();
+	printf("para_cal diff = %.16g\n",
+		   end - start);
 #endif
 }
 
@@ -3614,11 +3611,11 @@ void PNMsolver::para_cal(double mode)
 {
 	// 计算孔隙的体积
 #ifdef _OPENMP
-double start = omp_get_wtime();
+	double start = omp_get_wtime();
 #pragma omp parallel for num_threads(int(OMP_PARA))
 #endif
 	for (int i = 0; i < pn; i++)
-	{	
+	{
 		if (Pb[i].type == 0)
 		{
 			Pb[i].volume = 4 * pi * pow(Pb[i].Radiu, 3) / 3; // 孔隙网络单元
@@ -3671,8 +3668,8 @@ double start = omp_get_wtime();
 	cout << "total_p = " << total_p << endl;
 
 	// 水力传导系数计算
-double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
-GasAdsorptionData PSD_data("Pore_size_distribution.txt");
+	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
+	GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(int(OMP_PARA)) firstprivate(PSD_data) firstprivate(temp1) firstprivate(temp2) firstprivate(temp11) firstprivate(temp22) firstprivate(angle1) firstprivate(angle2) firstprivate(length1) firstprivate(length2)
 #endif
@@ -3723,12 +3720,11 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
 
-
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity, Pb[Tb_in[i].ID_2].turosity, refer_pressure, Flag_intri_per);
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
-				w_max = Pb[Tb_in[i].ID_2].Radiu; 
+				w_max = Pb[Tb_in[i].ID_2].Radiu;
 			}
 			else
 			{
@@ -3740,16 +3736,18 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// double average_pore_size = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max)[1];
 			// file_out << Tb_in[i].ID_2 << "\t" << average_pore_size/1e-9  << "\t" << Pb[Tb_in[i].ID_2].type << "\t" << Pb[Tb_in[i].ID_2].Radiu << endl;
 			// file_out << Pb[Tb_in[i].ID_2].X << "\t" << Pb[Tb_in[i].ID_2].Y  << "\t" << Pb[Tb_in[i].ID_2].Z << "\t" << K << endl;
-			
+
 			temp2 = abs(K * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
 
-			if (std::isnan(temp1) || std::isinf(temp1)) {
+			if (std::isnan(temp1) || std::isinf(temp1))
+			{
 				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
-			} 
+			}
 
-			if (std::isnan(temp2) || std::isinf(temp2)) {
+			if (std::isnan(temp2) || std::isinf(temp2))
+			{
 				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
-			} 
+			}
 			temp11 = abs(pi * Pb[Tb_in[i].ID_1].Radiu * Ds * n_max_ad);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 
@@ -3778,15 +3776,14 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_1].type == 1)
 			{
-				w_max = Pb[Tb_in[i].ID_1].Radiu; 
+				w_max = Pb[Tb_in[i].ID_1].Radiu;
 			}
 			else
 			{
 				w_max = voxel_size; // 1nm
 			}
-			
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity, Pb[Tb_in[i].ID_1].turosity, refer_pressure, Flag_intri_per);
 			// double K = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max);
 			// double K = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max)[0];
 			double K = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max);
@@ -3798,13 +3795,15 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(pi * Pb[Tb_in[i].ID_2].Radiu * Ds * n_max_ad);
-			if (std::isnan(temp1) || std::isinf(temp1)) {
+			if (std::isnan(temp1) || std::isinf(temp1))
+			{
 				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
-			} 
+			}
 
-			if (std::isnan(temp2) || std::isinf(temp2)) {
+			if (std::isnan(temp2) || std::isinf(temp2))
+			{
 				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
-			} 
+			}
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
 			// Tb_in[i].Surface_diff_conduc = 0;
@@ -3828,11 +3827,11 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			 
-			double w_max1, w_max2 {0};
+
+			double w_max1, w_max2{0};
 			if (Pb[Tb_in[i].ID_1].type == 1)
 			{
-				w_max1 = Pb[Tb_in[i].ID_1].Radiu; 
+				w_max1 = Pb[Tb_in[i].ID_1].Radiu;
 			}
 			else
 			{
@@ -3841,14 +3840,14 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
-				w_max2 = Pb[Tb_in[i].ID_2].Radiu; 
+				w_max2 = Pb[Tb_in[i].ID_2].Radiu;
 			}
 			else
 			{
 				w_max2 = voxel_size; // 1nm
 			}
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity, Pb[Tb_in[i].ID_1].turosity, refer_pressure, Flag_intri_per);
 			// double K1 = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max1);
 			// double K1 = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max1)[0];
 			double K1 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max1);
@@ -3856,7 +3855,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// file_out << Tb_in[i].ID_1 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu << endl;
 			// file_out << Pb[Tb_in[i].ID_1].X << "\t" << Pb[Tb_in[i].ID_1].Y  << "\t" << Pb[Tb_in[i].ID_1].Z << "\t" << K1 << endl;
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity, Pb[Tb_in[i].ID_2].turosity, refer_pressure, Flag_intri_per);
 			// double K2 = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max2);
 			// double K2 = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max2)[0];
 			double K2 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max2);
@@ -3866,13 +3865,15 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			temp1 = abs(K1 * Tb_in[i].Radiu * angle1 / (Pb[Tb_in[i].ID_1].visco * length1));
 			temp2 = abs(K2 * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
-			if (std::isnan(temp1) || std::isinf(temp1)) {
+			if (std::isnan(temp1) || std::isinf(temp1))
+			{
 				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
-			} 
+			}
 
-			if (std::isnan(temp2) || std::isinf(temp2)) {
+			if (std::isnan(temp2) || std::isinf(temp2))
+			{
 				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
-			} 
+			}
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
@@ -3915,7 +3916,6 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 	// 	Tb_out << i << "\t" << Tb_in[i].ID_1 << "\t" << Tb_in[i].ID_2  << "\t" << Tb_in[i].Conductivity  << endl;
 	// }
 	// Tb_out.close();
-	
 
 	// full_coord
 #ifdef _OPENMP
@@ -3940,9 +3940,9 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
 	}
 #ifdef _OPENMP
-double end = omp_get_wtime();
-printf("para_cal diff = %.16g\n",
-		end - start);
+	double end = omp_get_wtime();
+	printf("para_cal diff = %.16g\n",
+		   end - start);
 #endif
 }
 
@@ -4906,7 +4906,6 @@ void PNMsolver::output(int n, int m)
 	{
 		outfile << Tb[i].Radiu << endl;
 	}
-
 
 	// outfile << "SCALARS free_gas_flux double 1" << endl;
 	// outfile << "LOOKUP_TABLE table12" << endl;
@@ -6441,7 +6440,7 @@ void PNMsolver::para_cal_in_newton()
 {
 	// 计算压缩系数
 #ifdef _OPENMP
-double start = omp_get_wtime();
+	double start = omp_get_wtime();
 #endif
 	for (int i = 0; i < pn; i++)
 	{
@@ -6452,7 +6451,7 @@ double start = omp_get_wtime();
 	// 水力传导系数计算
 	double temp1 = 0, temp2 = 0, temp11 = 0, temp22 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0; // 两点流量计算中的临时存储变量
 
-GasAdsorptionData PSD_data("Pore_size_distribution.txt");
+	GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(int(OMP_PARA)) firstprivate(PSD_data) firstprivate(temp1) firstprivate(temp2) firstprivate(temp11) firstprivate(temp22) firstprivate(angle1) firstprivate(angle2) firstprivate(length1) firstprivate(length2)
 #endif
@@ -6469,7 +6468,6 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		{
 			Knusen_number = Average_visco / Average_pressure * sqrt(pi * Average_compre * 8.314 * Temperature / (2 * 0.016)) / (Tb_in[i].Radiu * 2);
 		}
-				
 
 		// 计算滑移项
 		double alpha = 1.358 * 2 / pi * atan(4 * pow(Knusen_number, 0.4));
@@ -6489,7 +6487,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
 			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
 			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
-			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
@@ -6506,7 +6504,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		}
 		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
 		{
-			double Slip1= PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_1].visco,Pb[Tb_in[i].ID_1].pressure + refer_pressure,Pb[Tb_in[i].ID_1].compre,Temperature,Pb[Tb_in[i].ID_1].visco));
+			double Slip1 = PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco));
 			temp1 = Slip1 * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 3) / (8 * Pb[Tb_in[i].ID_1].visco);
 			length2 = sqrt(pow(Pb[Tb_in[i].ID_2].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_2].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z, 2));
 			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
@@ -6521,11 +6519,11 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			{
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity, Pb[Tb_in[i].ID_2].turosity, refer_pressure, Flag_intri_per);
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
-				w_max = Pb[Tb_in[i].ID_2].Radiu; 
+				w_max = Pb[Tb_in[i].ID_2].Radiu;
 			}
 			else
 			{
@@ -6538,13 +6536,15 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			temp2 = abs(K * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
 
-			if (std::isnan(temp1) || std::isinf(temp1)) {
+			if (std::isnan(temp1) || std::isinf(temp1))
+			{
 				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
-			} 
+			}
 
-			if (std::isnan(temp2) || std::isinf(temp2)) {
+			if (std::isnan(temp2) || std::isinf(temp2))
+			{
 				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
-			} 
+			}
 			temp11 = abs(pi * Pb[Tb_in[i].ID_1].Radiu * Ds * n_max_ad);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 
@@ -6554,7 +6554,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
 			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
 			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
-			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
@@ -6571,7 +6571,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		}
 		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
 		{
-			double Slip2= PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_2].visco,Pb[Tb_in[i].ID_2].pressure + refer_pressure,Pb[Tb_in[i].ID_2].compre,Temperature,Pb[Tb_in[i].ID_2].visco));
+			double Slip2 = PSD_data.Function_Slip(PSD_data.knusen(Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco));
 			temp2 = Slip2 * pi * pow(Pb[Tb_in[i].ID_2].Radiu, 3) / (8 * Pb[Tb_in[i].ID_2].visco);
 			length1 = sqrt(pow(Pb[Tb_in[i].ID_1].X - Tb_in[i].center_x, 2) + pow(Pb[Tb_in[i].ID_1].Y - Tb_in[i].center_y, 2) + pow(Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z, 2));
 			if (Tb_in[i].n_direction == 0 || Tb_in[i].n_direction == 1)
@@ -6590,15 +6590,14 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_1].type == 1)
 			{
-				w_max = Pb[Tb_in[i].ID_1].Radiu; 
+				w_max = Pb[Tb_in[i].ID_1].Radiu;
 			}
 			else
 			{
 				w_max = voxel_size; // 1nm
 			}
-			
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity, Pb[Tb_in[i].ID_1].turosity, refer_pressure, Flag_intri_per);
 			// double K = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
 			// double K = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max)[0];
 			double K = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max);
@@ -6608,20 +6607,22 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(pi * Pb[Tb_in[i].ID_2].Radiu * Ds * n_max_ad);
-			if (std::isnan(temp1) || std::isinf(temp1)) {
+			if (std::isnan(temp1) || std::isinf(temp1))
+			{
 				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
-			} 
+			}
 
-			if (std::isnan(temp2) || std::isinf(temp2)) {
+			if (std::isnan(temp2) || std::isinf(temp2))
+			{
 				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
-			} 
+			}
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
 			Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
 			// Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
 			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
 			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
 			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
-			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
@@ -6655,11 +6656,11 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 				angle1 = (Pb[Tb_in[i].ID_1].Z - Tb_in[i].center_z) / length1;
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			 
-			double w_max1, w_max2 {0};
+
+			double w_max1, w_max2{0};
 			if (Pb[Tb_in[i].ID_1].type == 1)
 			{
-				w_max1 = Pb[Tb_in[i].ID_1].Radiu; 
+				w_max1 = Pb[Tb_in[i].ID_1].Radiu;
 			}
 			else
 			{
@@ -6668,20 +6669,20 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
-				w_max2 = Pb[Tb_in[i].ID_2].Radiu; 
+				w_max2 = Pb[Tb_in[i].ID_2].Radiu;
 			}
 			else
 			{
 				w_max2 = voxel_size; // 1nm
 			}
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity, Pb[Tb_in[i].ID_1].turosity, refer_pressure, Flag_intri_per);
 			// double K1 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max1);
 			// double K1 = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max1)[0];
 			double K1 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max1);
 			// double K1 = K_apparent(w_max1);
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity, Pb[Tb_in[i].ID_2].turosity, refer_pressure, Flag_intri_per);
 			// double K2 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max2);
 			// double K2 = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max2)[0];
 			double K2 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max2);
@@ -6689,13 +6690,15 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 
 			temp1 = abs(K1 * Tb_in[i].Radiu * angle1 / (Pb[Tb_in[i].ID_1].visco * length1));
 			temp2 = abs(K2 * Tb_in[i].Radiu * angle2 / (Pb[Tb_in[i].ID_2].visco * length2));
-			if (std::isnan(temp1) || std::isinf(temp1)) {
+			if (std::isnan(temp1) || std::isinf(temp1))
+			{
 				cout << "Warning: temp1 is NaN or Inf at index " << i << endl;
-			} 
+			}
 
-			if (std::isnan(temp2) || std::isinf(temp2)) {
+			if (std::isnan(temp2) || std::isinf(temp2))
+			{
 				cout << "Warning: temp2 is NaN or Inf at index " << i << endl;
-			} 
+			}
 			temp11 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle1 / length1);
 			temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
 			Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
@@ -6704,7 +6707,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
 			// 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
 			// 	<< "Tb_in[i].Length\t" << Tb_in[i].Length << "\t"
-			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t" 
+			// 	<< "Tb_in[i].Radiu\t" << Tb_in[i].Radiu << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].x\t" << Pb[Tb_in[i].ID_1].X << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].y\t" << Pb[Tb_in[i].ID_1].Y << "\t"
 			// 	<< "Pb[Tb_in[i].ID_1].z\t" << Pb[Tb_in[i].ID_1].Z << "\t"
@@ -6719,12 +6722,10 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// 	<< "temp2\t" << temp2 << "\t"
 			// 	<< "SLIP\t" << K1 << endl;
 
-
 			// cout << temp1 << "\t" << temp2 <<"\t"<< Tb_in[i].Conductivity << endl;
 		}
 		// Tb_out.close();
 	}
-
 
 	// ofstream Tb_out("Tb_out.txt", ios::out);
 	// for (size_t i = 0; i < 2 * tn; i++)
@@ -6736,7 +6737,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 	// 			<< Tb_in[i].Knusen << endl;
 	// }
 	// Tb_out.close();
-	
+
 	// merge throat
 	int label = 0;
 	Tb[0].ID_1 = Tb_in[0].ID_1;
@@ -6765,8 +6766,6 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 		}
 	}
 
-	
-
 	// full_coord
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(int(OMP_PARA))
@@ -6785,15 +6784,14 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 	// full_accum
 	Pb[0].full_accum = Pb[0].full_coord;
 
-
 	for (int i = 1; i < pn; i++)
 	{
 		Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
 	}
 #ifdef _OPENMP
-double end = omp_get_wtime();
-printf("para_cal diff = %.16g\n",
-		end - start);
+	double end = omp_get_wtime();
+	printf("para_cal diff = %.16g\n",
+		   end - start);
 #endif
 }
 
@@ -6802,7 +6800,7 @@ void PNMsolver::apparent_average_poresize(int i)
 	stringstream ss;
 	ss << i;
 	string filename = "Average_pore_size_apparant_" + ss.str() + ".txt";
-	ofstream file_out(filename);	
+	ofstream file_out(filename);
 	for (int i = 0; i < 2 * tn; i++)
 	{
 		GasAdsorptionData PSD_data("Pore_size_distribution.txt");
@@ -6811,11 +6809,11 @@ void PNMsolver::apparent_average_poresize(int i)
 		}
 		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
 		{
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity, Pb[Tb_in[i].ID_2].turosity, refer_pressure, Flag_intri_per);
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
-				w_max = Pb[Tb_in[i].ID_2].Radiu; 
+				w_max = Pb[Tb_in[i].ID_2].Radiu;
 			}
 			else
 			{
@@ -6824,31 +6822,31 @@ void PNMsolver::apparent_average_poresize(int i)
 
 			double average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max)[1];
 			double K_a_microporosity = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max);
-			file_out << Tb_in[i].ID_2 << "\t" << average_pore_size/1e-9  << "\t" << Pb[Tb_in[i].ID_2].type << "\t" << Pb[Tb_in[i].ID_2].Radiu << "\t" << K_a_microporosity/1e-21 << endl;
+			file_out << Tb_in[i].ID_2 << "\t" << average_pore_size / 1e-9 << "\t" << Pb[Tb_in[i].ID_2].type << "\t" << Pb[Tb_in[i].ID_2].Radiu << "\t" << K_a_microporosity / 1e-21 << endl;
 		}
 		else if ((Tb_in[i].ID_1 >= macro_n && Tb_in[i].ID_2 < macro_n))
 		{
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_1].type == 1)
 			{
-				w_max = Pb[Tb_in[i].ID_1].Radiu; 
+				w_max = Pb[Tb_in[i].ID_1].Radiu;
 			}
 			else
 			{
 				w_max = voxel_size; // 1nm
 			}
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity, Pb[Tb_in[i].ID_1].turosity, refer_pressure, Flag_intri_per);
 			double average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max)[1];
 			double K_a_microporosity = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max);
-			file_out << Tb_in[i].ID_1 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu  << "\t" << K_a_microporosity/1e-21  << endl;
+			file_out << Tb_in[i].ID_1 << "\t" << average_pore_size / 1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu << "\t" << K_a_microporosity / 1e-21 << endl;
 		}
 		else
 		{
-			double w_max1, w_max2 {0};
+			double w_max1, w_max2{0};
 			if (Pb[Tb_in[i].ID_1].type == 1)
 			{
-				w_max1 = Pb[Tb_in[i].ID_1].Radiu; 
+				w_max1 = Pb[Tb_in[i].ID_1].Radiu;
 			}
 			else
 			{
@@ -6857,22 +6855,22 @@ void PNMsolver::apparent_average_poresize(int i)
 
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
-				w_max2 = Pb[Tb_in[i].ID_2].Radiu; 
+				w_max2 = Pb[Tb_in[i].ID_2].Radiu;
 			}
 			else
 			{
 				w_max2 = voxel_size; // 1nm
 			}
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity, Pb[Tb_in[i].ID_1].turosity, refer_pressure, Flag_intri_per);
 			double average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max1)[1];
 			double K_a_microporosity = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max1);
-			file_out << Tb_in[i].ID_1 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu << "\t" << K_a_microporosity/1e-21  << endl;
+			file_out << Tb_in[i].ID_1 << "\t" << average_pore_size / 1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu << "\t" << K_a_microporosity / 1e-21 << endl;
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity, Pb[Tb_in[i].ID_2].turosity, refer_pressure, Flag_intri_per);
 			average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max2)[1];
 			K_a_microporosity = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max1);
-			file_out << Tb_in[i].ID_2 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_2].type << "\t" << Pb[Tb_in[i].ID_2].Radiu << "\t" << K_a_microporosity/1e-21 << endl;
+			file_out << Tb_in[i].ID_2 << "\t" << average_pore_size / 1e-9 << "\t" << Pb[Tb_in[i].ID_2].type << "\t" << Pb[Tb_in[i].ID_2].Radiu << "\t" << K_a_microporosity / 1e-21 << endl;
 		}
 	}
 	file_out.close();
@@ -6948,9 +6946,9 @@ void PNMsolver::AMGX_permeability_solver()
 		} while (norm_inf > eps_per);
 		if (Flag_outputvtk == true)
 		{
-			output(1,1);
+			output(1, 1);
 		}
-		
+
 		// int kk = refer_pressure / 1e6;
 		// apparent_average_poresize(kk);
 		macro = macro_outlet_Q();
@@ -7754,7 +7752,7 @@ void PNMsolver::Matrix_per_REV(double mode)
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)
 		{
 			// printf("i = %d,j = %d, I am Thread %d\n", i, j, omp_get_thread_num());
-			if ((num - 1 == 188213)||(ia[i - inlet] + temp - 1 == 188213)||(num - 1 == 188213))
+			if ((num - 1 == 188213) || (ia[i - inlet] + temp - 1 == 188213) || (num - 1 == 188213))
 			{
 				cout << " " << endl;
 			}
@@ -7894,7 +7892,7 @@ void PNMsolver::Matrix_per_REV(double mode)
 
 		for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++) // 主对角线的初始值
 		{
-			if ((num - 1 == 188213)||(ia[i - para_macro] + temp - 1 == 188213)||(num - 1 == 188213))
+			if ((num - 1 == 188213) || (ia[i - para_macro] + temp - 1 == 188213) || (num - 1 == 188213))
 			{
 				cout << " " << endl;
 			}
@@ -8190,15 +8188,14 @@ void PNMsolver::AMGX_solver_intri_permeability_REV()
 	// ************ begin AMGX solver ************
 	AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 
-
-/*贪婪最大路径*/
+	/*贪婪最大路径*/
 	// ofstream greedy("throat.txt");
 	// for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
-	// {		
+	// {
 	// 	greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length <<  " " << Tb[i].Radiu << endl;
 	// 	// greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << endl;
 	// }
-	// greedy.close();	
+	// greedy.close();
 
 	// ofstream outfile1("inlet.txt");
 	// ofstream outfile2("outlet.txt");
@@ -8209,15 +8206,15 @@ void PNMsolver::AMGX_solver_intri_permeability_REV()
 
 	// for (size_t i = macro_n; i < macro_n + m_inlet; i++)
 	// {
-	// 	outfile1 << i << endl;	
+	// 	outfile1 << i << endl;
 	// }
 	// outfile1.close();
-	
+
 	// for (size_t i = inlet + op; i < macro_n; i++)
 	// {
 	// 	outfile2 << i << endl;
 	// }
-	
+
 	// for (size_t i = macro_n + m_inlet + mp; i < pn; i++)
 	// {
 	// 	outfile2 << i << endl;
@@ -8232,12 +8229,11 @@ void PNMsolver::AMGX_solver_intri_permeability_REV()
 	// }
 	// outfile3.close();
 
-
 	macro = macro_outlet_Q();
 	micro_advec = micro_outlet_advec_Q();
 
 	double end = omp_get_wtime();
-	outfile << "permeability = " << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre))/1e-15 << " mD" << "\t"
+	outfile << "permeability = " << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-15 << " mD" << "\t"
 			<< "pressure = " << inlet_pre + refer_pressure << " Pa" << "\t"
 			<< endl;
 
@@ -8294,7 +8290,7 @@ void PNMsolver::Eigen_solver_intri_REV()
 	// 	aCOO_debug << COO_A[i].col << " " << COO_A[i].row << " " << COO_A[i].val << endl;
 	// }
 	// aCOO_debug.close();
-	
+
 	Eigen::SparseMatrix<double, Eigen::RowMajor> A0(op + mp, op + mp);
 	Eigen::VectorXd B0(op + mp, 1);
 	Eigen_subroutine_per(A0, B0);
@@ -8303,7 +8299,7 @@ void PNMsolver::Eigen_solver_intri_REV()
 	micro_advec = micro_outlet_advec_Q();
 
 	double end = omp_get_wtime();
-	outfile << "permeability = " << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre))/1e-15 << " md" << "\t"
+	outfile << "permeability = " << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-15 << " md" << "\t"
 			<< "pressure = " << inlet_pre + refer_pressure << " Pa" << "\t"
 			<< endl;
 
@@ -8374,11 +8370,11 @@ void PNMsolver::AMGX_permeability_solver(double mode)
 	/*贪婪最大路径*/
 	// ofstream greedy("throat.txt");
 	// for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
-	// {		
+	// {
 	// 	greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length <<  " " << Tb[i].Radiu << endl;
 	// 	// greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << endl;
 	// }
-	// greedy.close();	
+	// greedy.close();
 
 	// ofstream outfile1("inlet.txt");
 	// ofstream outfile2("outlet.txt");
@@ -8389,15 +8385,15 @@ void PNMsolver::AMGX_permeability_solver(double mode)
 
 	// for (size_t i = macro_n; i < macro_n + m_inlet; i++)
 	// {
-	// 	outfile1 << i << endl;	
+	// 	outfile1 << i << endl;
 	// }
 	// outfile1.close();
-	
+
 	// for (size_t i = inlet + op; i < macro_n; i++)
 	// {
 	// 	outfile2 << i << endl;
 	// }
-	
+
 	// for (size_t i = macro_n + m_inlet + mp; i < pn; i++)
 	// {
 	// 	outfile2 << i << endl;
@@ -8548,12 +8544,12 @@ int main(int argc, char **argv)
 	// 	PSD_data.setParameters(pre,Berea.compre(pre),Temperature,Berea.visco(pre,Berea.compre(pre),Temperature),0.134,1.5,refer_pressure);
 	// 	double w_bar = PSD_data.calculate_Permeability_aver(PSD_data.min_w(),max_w)[1];
 	// 	double w_bar_bar = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(),max_w)[1];
-		
+
 	// 	double K_apparent_ori = PSD_data.calculatePermeability(PSD_data.min_w(),max_w);
 	// 	double K_apparent_ave = PSD_data.calculate_Permeability_aver(PSD_data.min_w(),max_w)[0];
 	// 	double k_intri_ave = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(),max_w)[0];
 	// 	double K_intri_ori = PSD_data.calculatePermeability_intrin(PSD_data.min_w(),max_w);
-	// 	// double W = w_bar_bar; 
+	// 	// double W = w_bar_bar;
 	// 	// double ko = pow(W,2) * 0.134 / 1.5 / 32;
 	// 	// double z = Berea.compre(pre);
 	// 	// double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3
@@ -8562,7 +8558,7 @@ int main(int argc, char **argv)
 	// 	// double alpha = 1.358 * 2 / M_PI * atan(4 * pow(Knusen_number, 0.4));
 	// 	// double beta = 4;
 	// 	// double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
-		
+
 	// 	// double K_apparent_w =  Slip * ko;
 
 	// 	// diff += pow((K_apparent_w - K_apparent)/K_apparent,2);
