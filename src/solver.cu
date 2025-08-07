@@ -37,7 +37,7 @@
 #include <helper_cuda.h> // helper function CUDA error checking and initialization
 #include <helper_functions.h> // helper for shared functions common to CUDA Samples
 
-// 预条件子内核函数（不变）
+// 预条件子内核函数
 __global__ void apply_jacobi_preconditioner(int n, const double *M_inv,
                                             const double *r, double *z) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -52,13 +52,26 @@ using namespace std::chrono;
 const double CLOCKS_PER_SECOND = ((clock_t)1000);
 
 int conjugateGradient_solver(int iters_, double tol_) {
-  /*debug_rong*/
-  array<int, 4> row = {0, 2, 5, 7};
-  array<int, 7> col = {0, 1, 0, 1, 2, 1, 2};
-  array<double, 7> va = {4, 1, 1, 3, 1, 1, 2};
-  array<double, 3> B = {1, 2, 3};
+  /* 5x5 对称正定矩阵示例 */
+  // 矩阵结构：5点离散拉普拉斯算子
+  array<int, 6> row = {0, 3, 6, 9, 12, 15}; // 行偏移
+  array<int, 15> col = {
+      0, 1, 4, // 第0行
+      0, 1, 2, // 第1行
+      1, 2, 3, // 第2行
+      2, 3, 4, // 第3行
+      0, 3, 4  // 第4行
+  };
+  array<double, 15> va = {
+      4.0,  -1.0, -1.0, // 第0行
+      -1.0, 4.0,  -1.0, // 第1行
+      -1.0, 4.0,  -1.0, // 第2行
+      -1.0, 4.0,  -1.0, // 第3行
+      -1.0, -1.0, 4.0   // 第4行
+  };
+  array<double, 5> B = {1.0, 2.0, 3.0, 4.0, 5.0}; // 右侧向量
 
-  int op = row.size() - 1;
+  int op = row.size() - 1; // 矩阵行数
   int mp = 0;
 
   int NA = va.size();
@@ -71,7 +84,6 @@ int conjugateGradient_solver(int iters_, double tol_) {
 
   ia = new int[op + mp + 1];
   ja = new int[NA];
-
   A = new double[NA];
 
   for (int i = 0; i < row.size(); i++) {
@@ -88,7 +100,22 @@ int conjugateGradient_solver(int iters_, double tol_) {
   rows_offsets = ia;
   columns = ja;
   values = A;
-  /*debug_rong*/
+
+  // 打印矩阵信息
+  cout << "Testing with 5x5 symmetric positive definite matrix" << endl;
+  cout << "Matrix structure:" << endl;
+  for (int i = 0; i < op; i++) {
+    cout << "Row " << i << ": ";
+    for (int j = ia[i]; j < ia[i + 1]; j++) {
+      cout << "(" << ja[j] << ", " << values[j] << ") ";
+    }
+    cout << endl;
+  }
+  cout << "Right-hand side vector: ";
+  for (int i = 0; i < op; i++) {
+    cout << B[i] << " ";
+  }
+  cout << endl;
 
   clock_t startTime, endTime;
   startTime = clock();
@@ -360,8 +387,8 @@ int conjugateGradient_solver(int iters_, double tol_) {
 }
 
 int main() {
-  int iters = 1000;
-  double tol = 1e-10;
+  int iters = 10000;
+  double tol = 1e-20;
 
   cout << "iters:" << iters << endl;
   cout << "tol:" << tol << endl;
