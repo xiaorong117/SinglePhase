@@ -38,6 +38,8 @@
 // extern "C" {
 //   #include "mkl.h"
 //   }
+const char *sSDKname = "conjugateGradient";
+
 
 #include "PSD.cpp" // 包含PSD类的头文件
 
@@ -287,6 +289,13 @@ public:
 	throat *Tb_in;
 	throatmerge *Tb;
 
+	// 矩阵的内存空间CSR
+	int *rows_offsets, *columns;
+	double *values;
+	// 矩阵的显存空间CSR
+	int *d_csr_offsets, *d_csr_columns;
+	double *d_csr_values, *d_M_values;
+
 	double error;
 	int time_step = Time_step;
 	double time_all = pyhsic_time;
@@ -368,6 +377,10 @@ public:
 	void Eigen_solver_intri_REV();
 	void AMGX_solver_apparent_permeability_REV();
 	void AMGX_solver_intri_permeability_REV();
+	int conjugateGradient_solver(int iters_, double tol_);
+	void conjugateGradient_solver_per(double);
+	void conjugateGradient_solver_per();
+
 
 	void Matrix_gas_pro_REV();
 	void Matrix_per_REV();
@@ -416,6 +429,223 @@ public:
 		// delete[] Pb, Tb_in, Tb;
 	}
 };
+
+int PNMsolver::conjugateGradient_solver(int iters_, double tol_)
+{
+    // 矩阵的内存空间CSR
+	rows_offsets = ia;
+	columns = ja;
+	values = a;
+
+	clock_t startTime, endTime;
+	startTime = clock();
+
+    int N = op + mp;
+    int nnz = ia[op + mp];
+    const double tol = tol_;
+    const int max_iter = iters_;
+	cout << "max_iter:" << max_iter << endl;
+	double a, b, na, r0, r1, rr;
+
+	double *x;
+	double *rhs;
+	double *d_x, dot;
+	double *d_r, *d_p, *d_Ax;
+	int k;
+	double alpha, beta, alpham1;
+
+	x = (double *)malloc(N * sizeof(double));
+	rhs = (double *)malloc(N * sizeof(double));
+	for (size_t i = 0; i < N; i++)
+	{
+        rhs[i] = B[i];
+	}
+
+	for (int i = 0; i < N; i++)
+	{
+		x[i] = 0.0;
+    }
+
+	/* Get handle to the CUBLAS context */
+	cublasHandle_t cublasHandle = 0;
+	cublasStatus_t cublasStatus;
+	cublasStatus = cublasCreate(&cublasHandle);
+	checkCudaErrors(cublasStatus);
+
+	/* Get handle to the CUSPARSE context */
+	cusparseHandle_t cusparseHandle = 0;
+	checkCudaErrors(cusparseCreate(&cusparseHandle));
+
+	checkCudaErrors(cudaMalloc((void **)&d_csr_columns, nnz * sizeof(int)));
+	checkCudaErrors(cudaMalloc((void **)&d_csr_offsets, (N + 1) * sizeof(int)));
+	checkCudaErrors(cudaMalloc((void **)&d_csr_values, nnz * sizeof(double)));
+	checkCudaErrors(cudaMalloc((void **)&d_x, N * sizeof(double)));
+	checkCudaErrors(cudaMalloc((void **)&d_r, N * sizeof(double)));
+	checkCudaErrors(cudaMalloc((void **)&d_p, N * sizeof(double)));
+	checkCudaErrors(cudaMalloc((void **)&d_Ax, N * sizeof(double)));
+
+	/* Wrap raw data into cuSPARSE generic API objects */
+	cusparseSpMatDescr_t matA = NULL;
+	checkCudaErrors(cusparseCreateCsr(&matA, N, N, nnz, d_csr_offsets, d_csr_columns, d_csr_values,
+									  CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+									  CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F));
+	cusparseDnVecDescr_t vecx = NULL;
+	checkCudaErrors(cusparseCreateDnVec(&vecx, N, d_x, CUDA_R_64F));
+	cusparseDnVecDescr_t vecp = NULL;
+	checkCudaErrors(cusparseCreateDnVec(&vecp, N, d_p, CUDA_R_64F));
+	cusparseDnVecDescr_t vecAx = NULL;
+	checkCudaErrors(cusparseCreateDnVec(&vecAx, N, d_Ax, CUDA_R_64F));
+
+	/* Initialize problem data */
+	cudaMemcpy(d_csr_columns, columns, nnz * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_csr_offsets, rows_offsets, (N + 1) * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_csr_values, values, nnz * sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_x, x, N * sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_r, rhs, N * sizeof(double), cudaMemcpyHostToDevice);
+
+	alpha = 1.0;
+	alpham1 = -1.0;
+	beta = 0.0;
+	r0 = 0.;
+
+	/* Allocate workspace for cuSPARSE */
+    size_t bufferSize = 0;
+	checkCudaErrors(cusparseSpMV_bufferSize(
+		cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA, vecx,
+		&beta, vecAx, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
+	void *buffer = NULL;
+	checkCudaErrors(cudaMalloc(&buffer, bufferSize));
+
+	/* Begin CG */
+	checkCudaErrors(cusparseSpMV(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+								 &alpha, matA, vecx, &beta, vecAx, CUDA_R_64F,
+								 CUSPARSE_SPMV_ALG_DEFAULT, buffer));
+	checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &rr));
+	checkCudaErrors(cublasDaxpy(cublasHandle, N, &alpham1, d_Ax, 1, d_r, 1));
+	checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1));
+
+	k = 1;
+
+	int MYK = 0;
+	double RESI = 0;
+	while (r1 > tol * tol * rr && k <= max_iter)
+	{
+		if (k > 1)
+		{
+			b = r1 / r0;
+			cublasStatus = cublasDscal(cublasHandle, N, &b, d_p, 1);
+			cublasStatus = cublasDaxpy(cublasHandle, N, &alpha, d_r, 1, d_p, 1);
+		}
+		else
+		{
+			cublasStatus = cublasDcopy(cublasHandle, N, d_r, 1, d_p, 1);
+		}
+
+		checkCudaErrors(cusparseSpMV(
+			cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA, vecp,
+			&beta, vecAx, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, buffer));
+		cublasStatus = cublasDdot(cublasHandle, N, d_p, 1, d_Ax, 1, &dot);
+
+		a = r1 / dot;
+
+		cublasStatus = cublasDaxpy(cublasHandle, N, &a, d_p, 1, d_x, 1);
+		na = -a;
+		cublasStatus = cublasDaxpy(cublasHandle, N, &na, d_Ax, 1, d_r, 1);
+
+		r0 = r1;
+		cublasStatus = cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1);
+		cudaDeviceSynchronize();
+		MYK = k;
+		RESI = sqrt(r1) / sqrt(rr);
+		// 修改开始：每1000步输出一次，包括第一步
+		if (k == 1 || k % 10000 == 0) {
+			printf("iteration:%3d\nresidual:%e\n", MYK, RESI);
+                }
+		// 修改结束
+		k++;
+	}
+	printf("iteration:%3d\nresidual:%e\n", MYK, RESI);
+	endTime = clock();
+	cout << "CUDA SOLVE COSTS:" << (double)(endTime - startTime) / CLOCKS_PER_SECOND / 1000 << "s" << endl;
+
+	fstream Cuda_data, Cuda_data_execel;
+	// Cuda_data.open("Cuda_data.txt", ios::out | ios::app | ios::ate);
+	// Cuda_data << "iteration:" << MYK << "\t"
+	// 		  << "residual:" << RESI << "\t"
+	// 		  << "Cuda_time:" << (double)(endTime - startTime) / CLOCKS_PER_SECOND / 1000 << "s"
+	// 		  << "\t";
+	// Cuda_data.close();
+
+	// Cuda_data_execel.open("Cuda_data_execel.txt", ios::out | ios::app | ios::ate);
+	// Cuda_data_execel << "iteration:" << MYK << "\n"
+	// 				 << "residual:" << RESI << "\n"
+	// 				 << "Cuda_time:" << (double)(endTime - startTime) / CLOCKS_PER_SECOND / 1000 << "s"
+	// 				 << "\n";
+	// Cuda_data_execel.close();
+
+	cudaMemcpy(x, d_x, N * sizeof(double), cudaMemcpyDeviceToHost);
+    
+	// ofstream out("answer2.txt");
+	// for (int i = 0; i < op + mp; i++)
+	// {
+	// 	out << "x[" << i << "] = " << x[i] << endl;
+	// }
+	// out.close();
+
+	// 更新应力场
+	if (Flag_intri_per == true)
+	{
+		// 更新应力场
+		for (int i = inlet; i < inlet + op; i++)
+		{
+			Pb[i].pressure = x[i - inlet];
+		}
+		for (int i = op; i < op + mp; i++)
+		{
+			Pb[i + inlet + outlet + m_inlet].pressure = x[i];
+		}
+	}
+	else
+	{
+		// 更新应力场
+		for (int i = inlet; i < inlet + op; i++)
+		{
+			Pb[i].pressure += x[i - inlet];
+		}
+		for (int i = op; i < op + mp; i++)
+		{
+			Pb[i + inlet + outlet + m_inlet].pressure += x[i];
+		}
+	}
+    
+    cusparseDestroy(cusparseHandle);
+    cublasDestroy(cublasHandle);
+	if (matA)
+	{
+		checkCudaErrors(cusparseDestroySpMat(matA));
+	}
+	if (vecx)
+	{
+		checkCudaErrors(cusparseDestroyDnVec(vecx));
+	}
+	if (vecAx)
+	{
+		checkCudaErrors(cusparseDestroyDnVec(vecAx));
+	}
+	if (vecp)
+	{
+		checkCudaErrors(cusparseDestroyDnVec(vecp));
+	}
+
+	free(x);
+	free(rhs);
+	cudaFree(d_x);
+	cudaFree(d_r);
+	cudaFree(d_p);
+	cudaFree(d_Ax);
+    
+	return 0;
+}
 
 void PNMsolver::mean_pore_size()
 {
@@ -2163,6 +2393,99 @@ void PNMsolver::Eigen_solver_per(double i)
 	outfile.close();
 }
 
+
+void PNMsolver::conjugateGradient_solver_per(double i)
+{
+	refer_pressure = 0;
+	auto start1 = high_resolution_clock::now();
+	double macro{0}, micro_advec{0}, micro_diff{0};
+
+	int n = 1;													   // label of output file
+	int inter_n{0};												   // The interation of outer loop of Newton-raphoon method
+	double total_flow = 0;										   // accumulation production
+	ofstream outfile("Intrinsic_Permeability_CG.txt", ios::app); // output permeability;
+
+	Flag_eigen = false;
+	Flag_intri_per = true;
+	memory();
+	Paramentinput();
+	initial_condition();
+	para_cal(1);
+	Matrix_permeability(1);
+
+	conjugateGradient_solver(100000, 1e-9);
+	macro = macro_outlet_Q();
+	micro_advec = micro_outlet_advec_Q();
+
+	auto stop2 = high_resolution_clock::now();
+	auto duration2 = duration_cast<milliseconds>(stop2 - start1);
+
+	outfile << "permeability = " << (macro + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << " nD" << "\t"
+			<< "pressure = " << inlet_pre + refer_pressure << " Pa" << "\t"
+			<< "solve time = " << duration2.count() / 1000 << "s" << endl;
+	if (Flag_outputvtk)
+	{
+		output(1, 1);
+	}
+
+	outfile.close();
+}
+
+
+void PNMsolver::conjugateGradient_solver_per()
+{
+	auto start1 = high_resolution_clock::now();
+	double macro{0}, micro_advec{0}, micro_diff{0};
+
+	int n = 1;											 // label of output file
+	int inter_n{0};										 // The interation of outer loop of Newton-raphoon method
+	double total_flow = 0;								 // accumulation production
+	ofstream outfile("Apparent_Permeability_CG.txt",ios::app); // output permeability;
+	Flag_eigen = false;
+	Flag_intri_per = false;
+	Function_DS(inlet_pre + refer_pressure);
+	memory();
+	Paramentinput();
+	initial_condition();
+	para_cal();
+	Matrix_permeability();
+
+	conjugateGradient_solver(100000, 1e-9);
+	for (size_t i = 2; i < 52; i++)
+	{
+		para_cal_in_newton();
+		Matrix_permeability();
+		conjugateGradient_solver(100000, 1e-9);
+		inter_n = 0;
+		do
+		{
+			para_cal_in_newton();
+			Matrix_permeability();
+			conjugateGradient_solver(100000, 1e-9);
+			inter_n++;
+			cout << "Inf_norm = " << norm_inf << "\t\t"
+				 << "inner loop = " << inter_n
+				 << "\t\t" << endl;
+		} while (norm_inf > eps_per);
+
+		macro = macro_outlet_Q();
+		micro_advec = micro_outlet_advec_Q();
+		micro_diff = micro_outlet_diff_Q();
+
+		auto stop2 = high_resolution_clock::now();
+		auto duration2 = duration_cast<milliseconds>(stop2 - start1);
+
+		outfile << (macro + micro_advec + micro_diff) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21 << "\t"
+				<< (inlet_pre + refer_pressure) / 1e6 << "\t"
+				<< duration2.count() / 1000 << "s" << "\t"
+				<< endl;
+		refer_pressure += 1e6;
+		Function_DS(inlet_pre + refer_pressure);
+		initial_condition();
+	}
+	outfile.close();
+}
+
 // 升序多级排序，此时的判断条件是 < 号
 bool my_compare(vector<double> a, vector<double> b)
 {
@@ -2628,7 +2951,7 @@ void PNMsolver::Paramentinput()
 					for (int i = 0; i < pn; i++)
 					{
 						double waste{0};
-						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].radius_micro >> Pb[i].porosity >> Pb[i].km;
+						porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum;
 						Pb[i].km = ko;
 						Pb[i].porosity = porosity;
 						Pb[i].radius_micro = micro_radius;
@@ -3022,7 +3345,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			{
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
@@ -3099,7 +3422,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			}
 			
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
 			// double K = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
 			// double K = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max)[0];
 			double K = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max);
@@ -3176,13 +3499,13 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 				w_max2 = voxel_size; // 1nm
 			}
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
 			// double K1 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max1);
 			// double K1 = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max1)[0];
 			double K1 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max1);
 			// double K1 = K_apparent(w_max1);
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
 			// double K2 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max2);
 			// double K2 = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max2)[0];
 			double K2 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max2);
@@ -3401,7 +3724,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			}
 
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
@@ -3463,7 +3786,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			}
 			
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
 			// double K = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max);
 			// double K = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max)[0];
 			double K = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max);
@@ -3525,7 +3848,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 				w_max2 = voxel_size; // 1nm
 			}
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
 			// double K1 = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max1);
 			// double K1 = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max1)[0];
 			double K1 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max1);
@@ -3533,7 +3856,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			// file_out << Tb_in[i].ID_1 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu << endl;
 			// file_out << Pb[Tb_in[i].ID_1].X << "\t" << Pb[Tb_in[i].ID_1].Y  << "\t" << Pb[Tb_in[i].ID_1].Z << "\t" << K1 << endl;
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
 			// double K2 = PSD_data.calculatePermeability_intrin(PSD_data.min_w(), w_max2);
 			// double K2 = PSD_data.calculate_Permeability_aver_intri(PSD_data.min_w(), w_max2)[0];
 			double K2 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max2);
@@ -4213,9 +4536,10 @@ void PNMsolver::Eigen_subroutine_per(Eigen::SparseMatrix<double, Eigen::RowMajor
 		B0[i] = B[i];
 		// cout << B0[i] << endl;
 	}
+	// BiCGSTAB<SparseMatrix<double>, DiagonalPreconditioner<double>> solver;
 	BiCGSTAB<SparseMatrix<double, RowMajor>> solver;
 	solver.setMaxIterations(100000);
-	solver.setTolerance(pow(10, -8));
+	solver.setTolerance(pow(10, -6));
 	// 计算分解
 	solver.compute(A0);
 	VectorXd x = solver.solve(B0);
@@ -4235,7 +4559,7 @@ void PNMsolver::Eigen_subroutine_per(Eigen::SparseMatrix<double, Eigen::RowMajor
 	// 矩阵的无穷阶范数
 	// norm_inf = x.lpNorm<Eigen::Infinity>();
 	// 矩阵的二阶范数
-	// norm_inf = x.norm();
+	norm_inf = x.norm();
 
 	if (Flag_intri_per == true)
 	{
@@ -5438,7 +5762,7 @@ void PNMsolver::Eigen_solver_per()
 				<< (inlet_pre + refer_pressure) / 1e6 << "\t"
 				<< duration2.count() / 1000 << "s" << "\t"
 				<< endl;
-		refer_pressure = i * 1e6;
+		refer_pressure += 1e6;
 		Function_DS(inlet_pre + refer_pressure);
 		initial_condition();
 	}
@@ -6197,7 +6521,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			{
 				angle2 = (Pb[Tb_in[i].ID_2].Z - Tb_in[i].center_z) / length2;
 			}
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
@@ -6274,7 +6598,7 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 			}
 			
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
 			// double K = PSD_data.calculatePermeability(PSD_data.min_w(), w_max);
 			// double K = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max)[0];
 			double K = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max);
@@ -6351,13 +6675,13 @@ GasAdsorptionData PSD_data("Pore_size_distribution.txt");
 				w_max2 = voxel_size; // 1nm
 			}
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
 			// double K1 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max1);
 			// double K1 = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max1)[0];
 			double K1 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max1);
 			// double K1 = K_apparent(w_max1);
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
 			// double K2 = PSD_data.calculatePermeability(PSD_data.min_w(), w_max2);
 			// double K2 = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max2)[0];
 			double K2 = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max2);
@@ -6487,7 +6811,7 @@ void PNMsolver::apparent_average_poresize(int i)
 		}
 		else if ((Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 >= macro_n))
 		{
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
 			double w_max{0};
 			if (Pb[Tb_in[i].ID_2].type == 1)
 			{
@@ -6514,7 +6838,7 @@ void PNMsolver::apparent_average_poresize(int i)
 				w_max = voxel_size; // 1nm
 			}
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
 			double average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max)[1];
 			double K_a_microporosity = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max);
 			file_out << Tb_in[i].ID_1 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu  << "\t" << K_a_microporosity/1e-21  << endl;
@@ -6540,12 +6864,12 @@ void PNMsolver::apparent_average_poresize(int i)
 				w_max2 = voxel_size; // 1nm
 			}
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature, Pb[Tb_in[i].ID_1].visco, Pb[Tb_in[i].ID_1].porosity,Pb[Tb_in[i].ID_1].turosity,refer_pressure,Flag_intri_per);
 			double average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max1)[1];
 			double K_a_microporosity = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max1);
 			file_out << Tb_in[i].ID_1 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_1].type << "\t" << Pb[Tb_in[i].ID_1].Radiu << "\t" << K_a_microporosity/1e-21  << endl;
 
-			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure);
+			PSD_data.setParameters(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature, Pb[Tb_in[i].ID_2].visco, Pb[Tb_in[i].ID_2].porosity,Pb[Tb_in[i].ID_2].turosity,refer_pressure,Flag_intri_per);
 			average_pore_size = PSD_data.calculate_Permeability_aver(PSD_data.min_w(), w_max2)[1];
 			K_a_microporosity = PSD_data.calculate_Ka_from_Wbar(PSD_data.min_w(), w_max1);
 			file_out << Tb_in[i].ID_2 << "\t" << average_pore_size/1e-9 << "\t" << Pb[Tb_in[i].ID_2].type << "\t" << Pb[Tb_in[i].ID_2].Radiu << "\t" << K_a_microporosity/1e-21 << endl;
@@ -8195,6 +8519,11 @@ int main(int argc, char **argv)
 	case 9:
 		Berea.Eigen_solver_intri_REV();
 		break;
+	case 10:
+		Berea.conjugateGradient_solver_per(1);
+		break;
+	case 11:
+		Berea.conjugateGradient_solver_per();
 	default:
 		break;
 	}
@@ -8270,13 +8599,13 @@ int main(int argc, char **argv)
 	// gas_density_visco.close();
 
 	/*计算Tij*/
-	// ofstream Tij("Tij.txt");
+	// ofstream Tij("Apparent_permeability_for_OM-LP.txt");
 	// for (size_t i = 1; i < 51; i++)
 	// {
 	// 	Berea.Function_DS(i * 1e6);
 	// 	double pre = i * 1e6; // 压力 Pa
-	// 	double ko = 1249.11e-21;
-	// 	double W = 50e-9;
+	// 	double ko = 154e-21;
+	// 	double W = 8e-9;
 	// 	double z = Berea.compre(pre);
 	// 	double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3
 	// 	double viscos = Berea.visco(pre, z, Temperature);				// pa.s

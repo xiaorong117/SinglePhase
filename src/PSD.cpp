@@ -22,6 +22,7 @@ private:
     double phi = 0.135; // 孔隙度
     double tao = 1.5; // 迂曲度
     double mean_free_path = 1e-9; // 平均自由程
+    int Flag_intrin = true;
     
     // 线性插值函数
     double linearInterpolate(double x, double x0, double x1, double y0, double y1) const {
@@ -108,7 +109,7 @@ public:
     }
 
    // 修改Average_pressure，Average_compre和Temperature的值
-    void setParameters(double pressure, double compre, double temp, double visco, double phi_value, double tao_value, double refer_pressure_value) {
+    void setParameters(double pressure, double compre, double temp, double visco, double phi_value, double tao_value, double refer_pressure_value, bool Flag_inrtin_l) {
         Average_pressure = pressure;
         Average_compre = compre;    
         Temperature = temp;
@@ -116,6 +117,7 @@ public:
         phi = phi_value;
         tao = tao_value;
         refer_pressure = refer_pressure_value;
+        Flag_intrin = Flag_inrtin_l;
     }
 
     double knusen(double Average_visco,double Average_pressure, double Average_compre, double Temperature, double w) const {
@@ -360,12 +362,19 @@ public:
 		// double K_apparent = calculate_Permeability_aver(min_w(),w2)[0];
 
         // std::array<double,2>arr = {K_apparent_w, K_apparent};
-        return  K_apparent(w2);
-        // return calculatePermeability_intrin(min_w(),w2); // 使用本征渗透率计算
-        // double W = 6.30e-9; //
-        // return pow(W,2) * 0.134 / 1.5 / 32;
+        if (Flag_intrin == true)
+        {
+            return calculatePermeability_intrin(min_w(),w2); // 使用本征渗透率计算
+            // double W = 6.30e-9; //
+            // return pow(W,2) * 0.134 / 1.5 / 32;
+        }
+        else
+        {
+            return  K_apparent(w2);
+            // return calculatePermeability(min_w(),w2); // 使用表观渗透率计算
+        }
         // return  calculate_Permeability_aver(min_w(),w2)[0];
-        // return calculatePermeability(min_w(),w2); // 使用表观渗透率计算
+
     }
 double K_apparent(double w2)
 {
@@ -397,10 +406,8 @@ double K_apparent(double w2)
             ko = 3904.12E-21;
         }
         
-        
-        
-        // double W = 5.25e-9;
-		// double ko = pow(W,2) * 0.134 / 1.5 / 32;
+        W = 8e-9; 
+        ko = pow(6.3e-9,2) * 0.134 / 1.5 / 32;
         double pre = Average_pressure;
 		double z = Average_compre;
 		double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3

@@ -1,14 +1,14 @@
-inlet=115,	outlet=54,	m_inlet=115,	m_outlet=140,	op=2641,	mp=4483;
-大孔=2810	小孔=4738
-多重孔隙网络单元总数=7548	多重孔隙网络喉道总数=21906
+inlet=69,	outlet=57,	m_inlet=770,	m_outlet=745,	op=1436,	mp=26028;
+大孔=9618	小孔=115315	总数=124933
+混合模型单元总数=29105	混合模型喉道总数=109597
 
-模拟程序=5;   #1-混合模型产气 2-混合模型本征渗透率 3-混合模型表观渗透率 4-REV产气 5-REV渗透率 6-eigen混合模型本征渗透率 7-eigen混合模型表观渗透率 8-REV本征渗透率 9-eigen REV本征渗透率
+模拟程序=6;   #1-混合模型产气 2-混合模型本征渗透率 3-混合模型表观渗透率 4-REV产气 5-REV渗透率 6-Eigen本征渗透率 7-Eigen表观渗透率 8 REV-AMGX 本征渗透率  9 REV-EIGEN 本征渗透率 10- CG-本征 11-CG 表观
 
 inlet_pre=100;  #进口压力 Pa
 outlet_pre=0;   #出口压力 Pa
-refer_pressure=1e6;   #参考压力 Pa
-voxel_size=320e-9;   #体素大小 m     !!!!
-domain_size_cubic=382;   #立方体计算区域的边长 体素      !!!!
+refer_pressure=0;   #参考压力 Pa
+voxel_size=32e-9;   #体素大小 m     !!!!
+domain_size_cubic=50;   #立方体计算区域的边长 体素      !!!!
 dt=1e-8; #时间步长 s
 
 porosity=0.134;   #混合模型微孔孔隙度 -
@@ -23,22 +23,22 @@ micro_porosity_HP=0.1;  #A类有机质微孔区域平均孔隙 -
 micro_porosity_LP=0.1;  #B类有机质微孔区域平均孔隙度 -
 micro_porosity_Clay_HP=0.1;#粘土微孔区域平均孔隙度 -
 micro_porosity_Clay_LP=0.1;#粘土微孔区域平均孔隙度 -
-L_CLAY_HP=20e-9;   #粘土的特征长度 m                !!!!!!!
-L_CLAY_LP=20e-9;   #粘土的特征长度 m               !!!!!!!!
-L_OM_HP=1000e-9; #A类有机质特征长度 m              !!!!!!!!
-L_OM_LP=20e-9;   #B类有机质特征长度 m              !!!!!!!!
+L_CLAY_HP=8e-9;   #粘土的特征长度 m                !!!!!!!
+L_CLAY_LP=8e-9;   #粘土的特征长度 m               !!!!!!!!
+L_OM_HP=8e-9; #A类有机质特征长度 m              !!!!!!!!
+L_OM_LP=8e-9;   #B类有机质特征长度 m              !!!!!!!!
 Sw_clay=0;  #粘土单元含水饱和度 -
 Sw_OM=0;    #有机质单元含水饱和度   -
-K_OM_LP=2e-21;  #有机质单元本征渗透率 m2           !!!!!!!!!
-K_OM_HP=700e-21;    #有机质单元本征渗透率 m2       !!!!!!!!!
-K_Clay_HP=2e-22;   #粘土单元本征渗透率 m2          !!!!!!!!!
-K_Clay_LP=2e-22;   #粘土单元本征渗透率 m2          !!!!!!!!!
+K_OM_LP=1e-21;  #有机质单元本征渗透率 m2           !!!!!!!!!
+K_OM_HP=1e-21;    #有机质单元本征渗透率 m2       !!!!!!!!!
+K_Clay_HP=1e-21;   #粘土单元本征渗透率 m2          !!!!!!!!!
+K_Clay_LP=1e-21;   #粘土单元本征渗透率 m2          !!!!!!!!!
 
 residual_newton=1e-8; #残差 -
 maximum_dt=1e-3; #最大时间步长 s
 force_out=20; #若迭代次数过多,超过force_out进入下一个时间步
 double_dt=10; #迭代次数太少,少于double_dt则dt乘以2
-Flag_homo=1; #亚分辨率区域均质   !!!!!!!!!!
-Flag_outputvtk=0; #计算表观渗透率是否输出VTK 
-domain_length=382; #流动方向的长度 体素     !!!!!!!!
+Flag_homo=0; #亚分辨率区域均质   !!!!!!!!!!
+Flag_outputvtk=1; #计算表观渗透率是否输出VTK 
+domain_length=50; #流动方向的长度 体素     !!!!!!!!
 -------------------End of file------------------
