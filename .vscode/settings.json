@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.cpp": "cpp",
         "fstream": "cpp",
         "iostream": "cpp",
         "cstdio": "cpp",
@@ -112,7 +113,8 @@
         "charconv": "cpp",
         "expected": "cpp",
         "span": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "stdfloat": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabledIfIncludesResolve",
     "C_Cpp.dimInactiveRegions": false

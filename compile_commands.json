@@ -1,0 +1,35 @@
+[
+  {
+    "arguments": [
+      "/usr/local/cuda-12.9/bin/nvcc",
+      "-forward-unknown-to-host-compiler",
+      "--options-file",
+      "CMakeFiles/myproject.dir/includes_CUDA.rsp",
+      "-g",
+      "-std=c++14",
+      "--generate-code=arch=compute_52,code=[compute_52,sm_52]",
+      "-fopenmp",
+      "-x",
+      "cu",
+      "-c",
+      "-I",
+      ".",
+      "-I",
+      "/home/rong/Mycode/lib/gsl/include",
+      "-I",
+      "/home/rong/Mycode/lib/gsl/include",
+      "-I",
+      ".",
+      "-I",
+      "/home/rong/Mycode/lib/gsl/include",
+      "-I",
+      "/home/rong/Mycode/lib/gsl/include",
+      "-o",
+      "CMakeFiles/myproject.dir/solver.cu.o",
+      "/home/rong/Mycode/SinglePhase/src/solver.cu"
+    ],
+    "directory": "/home/rong/Mycode/SinglePhase/build/bin",
+    "file": "/home/rong/Mycode/SinglePhase/src/solver.cu",
+    "output": "/home/rong/Mycode/SinglePhase/build/bin/CMakeFiles/myproject.dir/solver.cu.o"
+  }
+]

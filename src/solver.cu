@@ -34,18 +34,24 @@
 #include <cusparse.h>
 
 // Utilities and system includes
-#include <helper_cuda.h>      // helper function CUDA error checking and initialization
+#include <helper_cuda.h> // helper function CUDA error checking and initialization
 #include <helper_functions.h> // helper for shared functions common to CUDA Samples
-// extern "C" {
-//   #include "mkl.h"
-//   }
+
+// 预条件子内核函数（不变）
+__global__ void apply_jacobi_preconditioner(int n, const double *M_inv,
+                                            const double *r, double *z) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < n) {
+    z[idx] = r[idx] * M_inv[idx]; // 正确计算: z = r * M^{-1}
+  }
+}
+
 const char *sSDKname = "conjugateGradient";
 using namespace std;
 using namespace std::chrono;
 const double CLOCKS_PER_SECOND = ((clock_t)1000);
 
-int conjugateGradient_solver(int iters_, double tol_)
-{
+int conjugateGradient_solver(int iters_, double tol_) {
   /*debug_rong*/
   array<int, 4> row = {0, 2, 5, 7};
   array<int, 7> col = {0, 1, 0, 1, 2, 1, 2};
@@ -68,16 +74,13 @@ int conjugateGradient_solver(int iters_, double tol_)
 
   A = new double[NA];
 
-  for (int i = 0; i < row.size(); i++)
-  {
+  for (int i = 0; i < row.size(); i++) {
     ia[i] = row[i];
   }
-  for (int i = 0; i < col.size(); i++)
-  {
+  for (int i = 0; i < col.size(); i++) {
     ja[i] = col[i];
   }
-  for (int i = 0; i < va.size(); i++)
-  {
+  for (int i = 0; i < va.size(); i++) {
     A[i] = va[i];
   }
 
@@ -95,24 +98,25 @@ int conjugateGradient_solver(int iters_, double tol_)
   const double tol = tol_;
   const int max_iter = iters_;
   cout << "max_iter:" << max_iter << endl;
-  double a, b, na, r0, r1, rr;
+  cout << "Matrix size: " << N << "x" << N << endl;
+  cout << "Non-zero elements: " << nnz << endl;
+  double rz_new, rz_old, rr, r1, dot_pAp, dot_rr;
 
   double *x;
   double *rhs;
-  double *d_x, dot;
-  double *d_r, *d_p, *d_Ax;
+  double *d_x;
+  double *d_r, *d_p, *d_Ax, *d_z, *d_M_inv;
   int k;
-  double alpha, beta, alpham1;
+  double alpha, beta;
 
   x = (double *)malloc(N * sizeof(double));
   rhs = (double *)malloc(N * sizeof(double));
-  for (size_t i = 0; i < N; i++)
-  {
+  for (size_t i = 0; i < N; i++) {
     rhs[i] = B[i];
+    cout << "B[" << i << "] = " << rhs[i] << endl;
   }
 
-  for (int i = 0; i < N; i++)
-  {
+  for (int i = 0; i < N; i++) {
     x[i] = 0.0;
   }
 
@@ -134,6 +138,60 @@ int conjugateGradient_solver(int iters_, double tol_)
   checkCudaErrors(cudaMalloc((void **)&d_p, N * sizeof(double)));
   checkCudaErrors(cudaMalloc((void **)&d_Ax, N * sizeof(double)));
 
+  // 添加预条件子内存分配
+  checkCudaErrors(cudaMalloc((void **)&d_z, N * sizeof(double)));
+  checkCudaErrors(cudaMalloc((void **)&d_M_inv, N * sizeof(double)));
+
+  /* Initialize problem data */
+  checkCudaErrors(cudaMemcpy(d_csr_columns, columns, nnz * sizeof(int),
+                             cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMemcpy(d_csr_offsets, rows_offsets, (N + 1) * sizeof(int),
+                             cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMemcpy(d_csr_values, values, nnz * sizeof(double),
+                             cudaMemcpyHostToDevice));
+  checkCudaErrors(
+      cudaMemcpy(d_x, x, N * sizeof(double), cudaMemcpyHostToDevice));
+  checkCudaErrors(
+      cudaMemcpy(d_r, rhs, N * sizeof(double), cudaMemcpyHostToDevice));
+
+  // ================= 预条件子计算 =================
+  cout << "Computing Jacobi preconditioner..." << endl;
+  double *M_inv = new double[N];
+
+  // 改进的对角线提取
+  for (int i = 0; i < N; i++) {
+    int start = ia[i];
+    int end = ia[i + 1];
+    bool diagonal_found = false;
+
+    for (int j = start; j < end; j++) {
+      if (ja[j] == i) {
+        diagonal_found = true;
+        if (values[j] == 0) {
+          cout << "Warning: Zero diagonal element at row " << i << endl;
+          M_inv[i] = 1.0;
+        } else {
+          M_inv[i] = 1.0 / values[j];
+        }
+        break;
+      }
+    }
+
+    if (!diagonal_found) {
+      cout << "Warning: No diagonal element found for row " << i << endl;
+      M_inv[i] = 1.0;
+    }
+    cout << "M_inv[" << i << "] = " << M_inv[i] << endl;
+  }
+
+  checkCudaErrors(
+      cudaMemcpy(d_M_inv, M_inv, N * sizeof(double), cudaMemcpyHostToDevice));
+  // ===============================================
+
+  double one = 1.0;
+  double zero = 0.0;
+  double minus_one = -1.0;
+
   /* Wrap raw data into cuSPARSE generic API objects */
   cusparseSpMatDescr_t matA = NULL;
   checkCudaErrors(cusparseCreateCsr(&matA, N, N, nnz, d_csr_offsets,
@@ -147,125 +205,143 @@ int conjugateGradient_solver(int iters_, double tol_)
   cusparseDnVecDescr_t vecAx = NULL;
   checkCudaErrors(cusparseCreateDnVec(&vecAx, N, d_Ax, CUDA_R_64F));
 
-  /* Initialize problem data */
-  cudaMemcpy(d_csr_columns, columns, nnz * sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_csr_offsets, rows_offsets, (N + 1) * sizeof(int),
-             cudaMemcpyHostToDevice);
-  cudaMemcpy(d_csr_values, values, nnz * sizeof(double),
-             cudaMemcpyHostToDevice);
-  cudaMemcpy(d_x, x, N * sizeof(double), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_r, rhs, N * sizeof(double), cudaMemcpyHostToDevice);
-
-  alpha = 1.0;
-  alpham1 = -1.0;
-  beta = 0.0;
-  r0 = 0.;
-
   /* Allocate workspace for cuSPARSE */
   size_t bufferSize = 0;
   checkCudaErrors(cusparseSpMV_bufferSize(
-      cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA, vecx,
-      &beta, vecAx, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
+      cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matA, vecx, &zero,
+      vecAx, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
   void *buffer = NULL;
   checkCudaErrors(cudaMalloc(&buffer, bufferSize));
 
   /* Begin CG */
+  cout << "Initial SpMV..." << endl;
   checkCudaErrors(cusparseSpMV(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-                               &alpha, matA, vecx, &beta, vecAx, CUDA_R_64F,
+                               &one, matA, vecx, &zero, vecAx, CUDA_R_64F,
                                CUSPARSE_SPMV_ALG_DEFAULT, buffer));
-  checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &rr));
-  checkCudaErrors(cublasDaxpy(cublasHandle, N, &alpham1, d_Ax, 1, d_r, 1));
-  checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1));
+  cudaDeviceSynchronize();
 
-  k = 1;
+  // 计算初始残差 r = b - Ax
+  cout << "Computing initial residual..." << endl;
+  checkCudaErrors(cublasDaxpy(cublasHandle, N, &minus_one, d_Ax, 1, d_r, 1));
 
-  int MYK = 0;
-  double RESI = 0;
-  while (r1 > tol * tol * rr && k <= max_iter)
-  {
-    if (k > 1)
-    {
-      b = r1 / r0;
-      cublasStatus = cublasDscal(cublasHandle, N, &b, d_p, 1);
-      cublasStatus = cublasDaxpy(cublasHandle, N, &alpha, d_r, 1, d_p, 1);
-    }
-    else
-    {
-      cublasStatus = cublasDcopy(cublasHandle, N, d_r, 1, d_p, 1);
-    }
+  // ======== 关键修复：预条件子应用（正确参数顺序） ========
+  cout << "Applying Jacobi preconditioner..." << endl;
+  int blockSize = 256;
+  int numBlocks = (N + blockSize - 1) / blockSize;
 
-    checkCudaErrors(cusparseSpMV(
-        cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA, vecp,
-        &beta, vecAx, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, buffer));
-    cublasStatus = cublasDdot(cublasHandle, N, d_p, 1, d_Ax, 1, &dot);
+  // 正确参数顺序：N, d_M_inv, d_r, d_z
+  apply_jacobi_preconditioner<<<numBlocks, blockSize>>>(N, d_M_inv, d_r, d_z);
 
-    a = r1 / dot;
-
-    cublasStatus = cublasDaxpy(cublasHandle, N, &a, d_p, 1, d_x, 1);
-    na = -a;
-    cublasStatus = cublasDaxpy(cublasHandle, N, &na, d_Ax, 1, d_r, 1);
-
-    r0 = r1;
-    cublasStatus = cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1);
-    cudaDeviceSynchronize();
-    MYK = k;
-    RESI = sqrt(r1) / sqrt(rr);
-    // 修改开始：每1000步输出一次，包括第一步
-    if (k == 1 || k % 10000 == 0)
-    {
-      printf("iteration:%3d\nresidual:%e\n", MYK, RESI);
-    }
-    // 修改结束
-    k++;
+  // 添加CUDA内核错误检查
+  cudaError_t kernelErr = cudaGetLastError();
+  if (kernelErr != cudaSuccess) {
+    cout << "CUDA kernel error: " << cudaGetErrorString(kernelErr) << endl;
   }
-  printf("iteration:%3d\nresidual:%e\n", MYK, RESI);
+  cudaDeviceSynchronize();
+  // ===============================================
+
+  // 计算 rz = r·z
+  checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_z, 1, &rz_old));
+  cout << "Initial rz_old: " << rz_old << endl;
+
+  // 计算 rr = r·r (用于收敛判断)
+  checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &rr));
+  cout << "Initial residual norm: " << sqrt(rr) << " (rr = " << rr << ")"
+       << endl;
+
+  // 设置初始搜索方向 p = z
+  checkCudaErrors(cublasDcopy(cublasHandle, N, d_z, 1, d_p, 1));
+
+  r1 = rr; // 当前残差范数平方
+  k = 0;
+
+  double RESI = 0;
+  while (sqrt(r1) > tol * sqrt(rr) && k < max_iter) {
+    // 计算 Ap = A * p
+    checkCudaErrors(cusparseSpMV(
+        cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matA, vecp,
+        &zero, vecAx, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, buffer));
+    cudaDeviceSynchronize();
+
+    // 计算 p·Ap
+    checkCudaErrors(cublasDdot(cublasHandle, N, d_p, 1, d_Ax, 1, &dot_pAp));
+    cout << "Iter " << k << " dot_pAp: " << dot_pAp << endl;
+
+    // 保护除以零
+    if (abs(dot_pAp) < 1e-15) {
+      if (dot_pAp < 0)
+        dot_pAp = -1e-15;
+      else
+        dot_pAp = 1e-15;
+    }
+
+    alpha = rz_old / dot_pAp;
+
+    // 更新解: x = x + alpha * p
+    checkCudaErrors(cublasDaxpy(cublasHandle, N, &alpha, d_p, 1, d_x, 1));
+
+    // 更新残差: r = r - alpha * Ap
+    double neg_alpha = -alpha;
+    checkCudaErrors(cublasDaxpy(cublasHandle, N, &neg_alpha, d_Ax, 1, d_r, 1));
+
+    // 再次应用预条件子（正确参数顺序）
+    apply_jacobi_preconditioner<<<numBlocks, blockSize>>>(N, d_M_inv, d_r, d_z);
+    cudaDeviceSynchronize();
+
+    // 计算新的点积 rz_new = r·z
+    checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_z, 1, &rz_new));
+
+    // 计算残差范数 r·r
+    checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1));
+
+    beta = rz_new / rz_old;
+
+    // 更新搜索方向: p = z + beta * p
+    checkCudaErrors(cublasDscal(cublasHandle, N, &beta, d_p, 1));
+    checkCudaErrors(cublasDaxpy(cublasHandle, N, &one, d_z, 1, d_p, 1));
+
+    rz_old = rz_new;
+    k++;
+
+    RESI = sqrt(r1) / sqrt(rr);
+    if (k % 1 == 0) { // 每次迭代都输出
+      printf("PCG iteration:%3d\tresidual:%e\n", k, RESI);
+    }
+  }
+  printf("Final PCG iteration:%3d\tresidual:%e\n", k, RESI);
+
   endTime = clock();
-  cout << "CUDA SOLVE COSTS:"
+  cout << "PCG SOLVE COSTS:"
        << (double)(endTime - startTime) / CLOCKS_PER_SECOND / 1000 << "s"
        << endl;
 
-  fstream Cuda_data, Cuda_data_execel;
-  // Cuda_data.open("Cuda_data.txt", ios::out | ios::app | ios::ate);
-  // Cuda_data << "iteration:" << MYK << "\t"
-  // 		  << "residual:" << RESI << "\t"
-  // 		  << "Cuda_time:" << (double)(endTime - startTime) /
-  // CLOCKS_PER_SECOND / 1000 << "s"
-  // 		  << "\t";
-  // Cuda_data.close();
+  // 将结果复制回主机
+  checkCudaErrors(
+      cudaMemcpy(x, d_x, N * sizeof(double), cudaMemcpyDeviceToHost));
 
-  // Cuda_data_execel.open("Cuda_data_execel.txt", ios::out | ios::app |
-  // ios::ate); Cuda_data_execel << "iteration:" << MYK << "\n"
-  // 				 << "residual:" << RESI << "\n"
-  // 				 << "Cuda_time:" << (double)(endTime -
-  // startTime) / CLOCKS_PER_SECOND / 1000 << "s"
-  // 				 << "\n";
-  // Cuda_data_execel.close();
-
-  cudaMemcpy(x, d_x, N * sizeof(double), cudaMemcpyDeviceToHost);
-
-  ofstream out("answer2.txt");
-  for (int i = 0; i < op + mp; i++)
-  {
-    out << "x[" << i << "] = " << x[i] << endl;
+  // 输出结果
+  cout << "Solution vector:" << endl;
+  for (int i = 0; i < N; i++) {
+    cout << "x[" << i << "] = " << x[i] << endl;
   }
-  out.close();
+
+  // 释放内存
+  delete[] M_inv;
+  cudaFree(d_z);
+  cudaFree(d_M_inv);
 
   cusparseDestroy(cusparseHandle);
   cublasDestroy(cublasHandle);
-  if (matA)
-  {
+  if (matA) {
     checkCudaErrors(cusparseDestroySpMat(matA));
   }
-  if (vecx)
-  {
+  if (vecx) {
     checkCudaErrors(cusparseDestroyDnVec(vecx));
   }
-  if (vecAx)
-  {
+  if (vecAx) {
     checkCudaErrors(cusparseDestroyDnVec(vecAx));
   }
-  if (vecp)
-  {
+  if (vecp) {
     checkCudaErrors(cusparseDestroyDnVec(vecp));
   }
 
@@ -275,14 +351,17 @@ int conjugateGradient_solver(int iters_, double tol_)
   cudaFree(d_r);
   cudaFree(d_p);
   cudaFree(d_Ax);
+  cudaFree(buffer);
+  cudaFree(d_csr_offsets);
+  cudaFree(d_csr_columns);
+  cudaFree(d_csr_values);
 
   return 0;
 }
 
-int main()
-{
-  int iters = 1000000;
-  double tol = 1e-12;
+int main() {
+  int iters = 1000;
+  double tol = 1e-10;
 
   cout << "iters:" << iters << endl;
   cout << "tol:" << tol << endl;
