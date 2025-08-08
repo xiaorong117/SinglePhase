@@ -37,23 +37,49 @@
 #include <helper_cuda.h> // helper function CUDA error checking and initialization
 #include <helper_functions.h> // helper for shared functions common to CUDA Samples
 
-// 预条件子内核函数
-__global__ void apply_jacobi_preconditioner(int n, const double *M_inv,
-                                            const double *r, double *z) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < n) {
-    z[idx] = r[idx] * M_inv[idx]; // 正确计算: z = r * M^{-1}
-  }
-}
-
 const char *sSDKname = "conjugateGradient";
 using namespace std;
 using namespace std::chrono;
 const double CLOCKS_PER_SECOND = ((clock_t)1000);
 
+// 应用ILU预条件子的函数（求解L和U系统）
+void apply_ilu_preconditioner(
+    cusparseHandle_t cusparseHandle, cusparseMatDescr_t descrL,
+    cusparseMatDescr_t descrU, csrsv2Info_t infoL, csrsv2Info_t infoU, int n,
+    int nnz, const int *d_csr_offsets, const int *d_csr_columns,
+    const double *d_csr_values_ILU, const double *r, double *z, void *bufferL,
+    void *bufferU, double *d_y) {
+  double alpha = 1.0;
+
+  // 第一步：求解 L*y = r (下三角系统)
+  cusparseStatus_t status = cusparseDcsrsv2_solve(
+      cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, nnz, &alpha, descrL,
+      d_csr_values_ILU, d_csr_offsets, d_csr_columns, infoL,
+      r,   // 输入向量 r
+      d_y, // 输出向量 y
+      CUSPARSE_SOLVE_POLICY_USE_LEVEL, bufferL);
+
+  if (status != CUSPARSE_STATUS_SUCCESS) {
+    std::cerr << "cusparseL solve failed!" << std::endl;
+    exit(1);
+  }
+
+  // 第二步：求解 U*z = y (上三角系统)
+  status = cusparseDcsrsv2_solve(
+      cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, nnz, &alpha, descrU,
+      d_csr_values_ILU, d_csr_offsets, d_csr_columns, infoU,
+      d_y, // 输入向量 y
+      z,   // 输出向量 z
+      CUSPARSE_SOLVE_POLICY_USE_LEVEL, bufferU);
+
+  if (status != CUSPARSE_STATUS_SUCCESS) {
+    std::cerr << "cusparseU solve failed!" << std::endl;
+    exit(1);
+  }
+}
+
 int conjugateGradient_solver(int iters_, double tol_) {
   /* 5x5 对称正定矩阵示例 */
-  // 矩阵结构：5点离散拉普拉斯算子
   array<int, 6> row = {0, 3, 6, 9, 12, 15}; // 行偏移
   array<int, 15> col = {
       0, 1, 4, // 第0行
@@ -80,7 +106,7 @@ int conjugateGradient_solver(int iters_, double tol_) {
 
   int *ia, *ja;
   int *d_csr_offsets, *d_csr_columns;
-  double *d_csr_values, *d_M_values;
+  double *d_csr_values, *d_csr_values_ILU; // 添加用于ILU的矩阵值存储
 
   ia = new int[op + mp + 1];
   ja = new int[NA];
@@ -96,7 +122,6 @@ int conjugateGradient_solver(int iters_, double tol_) {
     A[i] = va[i];
   }
 
-  // 矩阵的内存空间CSR
   rows_offsets = ia;
   columns = ja;
   values = A;
@@ -132,7 +157,7 @@ int conjugateGradient_solver(int iters_, double tol_) {
   double *x;
   double *rhs;
   double *d_x;
-  double *d_r, *d_p, *d_Ax, *d_z, *d_M_inv;
+  double *d_r, *d_p, *d_Ax, *d_z;
   int k;
   double alpha, beta;
 
@@ -160,14 +185,15 @@ int conjugateGradient_solver(int iters_, double tol_) {
   checkCudaErrors(cudaMalloc((void **)&d_csr_columns, nnz * sizeof(int)));
   checkCudaErrors(cudaMalloc((void **)&d_csr_offsets, (N + 1) * sizeof(int)));
   checkCudaErrors(cudaMalloc((void **)&d_csr_values, nnz * sizeof(double)));
+  // 为ILU矩阵值分配内存
+  checkCudaErrors(cudaMalloc((void **)&d_csr_values_ILU, nnz * sizeof(double)));
+
   checkCudaErrors(cudaMalloc((void **)&d_x, N * sizeof(double)));
   checkCudaErrors(cudaMalloc((void **)&d_r, N * sizeof(double)));
   checkCudaErrors(cudaMalloc((void **)&d_p, N * sizeof(double)));
   checkCudaErrors(cudaMalloc((void **)&d_Ax, N * sizeof(double)));
-
-  // 添加预条件子内存分配
-  checkCudaErrors(cudaMalloc((void **)&d_z, N * sizeof(double)));
-  checkCudaErrors(cudaMalloc((void **)&d_M_inv, N * sizeof(double)));
+  checkCudaErrors(cudaMalloc((void **)&d_z, N * sizeof(double))); // z向量
+  checkCudaErrors(cudaMalloc((void **)&d_y, N * sizeof(double))); // y中间向量
 
   /* Initialize problem data */
   checkCudaErrors(cudaMemcpy(d_csr_columns, columns, nnz * sizeof(int),
@@ -176,44 +202,115 @@ int conjugateGradient_solver(int iters_, double tol_) {
                              cudaMemcpyHostToDevice));
   checkCudaErrors(cudaMemcpy(d_csr_values, values, nnz * sizeof(double),
                              cudaMemcpyHostToDevice));
+  // 复制矩阵值到ILU的存储空间
+  checkCudaErrors(cudaMemcpy(d_csr_values_ILU, values, nnz * sizeof(double),
+                             cudaMemcpyHostToDevice));
   checkCudaErrors(
       cudaMemcpy(d_x, x, N * sizeof(double), cudaMemcpyHostToDevice));
   checkCudaErrors(
       cudaMemcpy(d_r, rhs, N * sizeof(double), cudaMemcpyHostToDevice));
 
-  // ================= 预条件子计算 =================
-  cout << "Computing Jacobi preconditioner..." << endl;
-  double *M_inv = new double[N];
+  // ================= ILU(0) 预条件子计算 =================
+  cout << "Computing ILU(0) preconditioner..." << endl;
 
-  // 改进的对角线提取
-  for (int i = 0; i < N; i++) {
-    int start = ia[i];
-    int end = ia[i + 1];
-    bool diagonal_found = false;
+  // 1. 创建矩阵描述符
+  cusparseMatDescr_t descrA = 0;
+  cusparseCreateMatDescr(&descrA);
+  cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL);
+  cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO);
 
-    for (int j = start; j < end; j++) {
-      if (ja[j] == i) {
-        diagonal_found = true;
-        if (values[j] == 0) {
-          cout << "Warning: Zero diagonal element at row " << i << endl;
-          M_inv[i] = 1.0;
-        } else {
-          M_inv[i] = 1.0 / values[j];
-        }
-        break;
-      }
-    }
+  // 2. 为ILU分解创建信息结构体
+  csrilu02Info_t info_ilu = 0;
+  cusparseCreateCsrilu02Info(&info_ilu);
 
-    if (!diagonal_found) {
-      cout << "Warning: No diagonal element found for row " << i << endl;
-      M_inv[i] = 1.0;
-    }
-    cout << "M_inv[" << i << "] = " << M_inv[i] << endl;
+  // 3. 计算ILU(0)所需的缓冲区大小
+  int bufferSize_ilu = 0;
+  cusparseDcsrilu02_bufferSize(cusparseHandle, N, nnz, descrA, d_csr_values_ILU,
+                               d_csr_offsets, d_csr_columns, info_ilu,
+                               &bufferSize_ilu);
+
+  // 4. 分配缓冲区
+  void *buffer_ilu = 0;
+  cudaMalloc(&buffer_ilu, bufferSize_ilu);
+
+  // 5. 执行ILU(0)分析
+  int structural_zero, numerical_zero;
+  cusparseDcsrilu02_analysis(cusparseHandle, N, nnz, descrA, d_csr_values_ILU,
+                             d_csr_offsets, d_csr_columns, info_ilu,
+                             CUSPARSE_SOLVE_POLICY_USE_LEVEL, buffer_ilu);
+
+  // 检查分析结果
+  cusparseStatus_t status;
+  status =
+      cusparseXcsrilu02_zeroPivot(cusparseHandle, info_ilu, &numerical_zero);
+  if (CUSPARSE_STATUS_ZERO_PIVOT == status) {
+    printf("A(%d,%d) 是缺失的结构零\n", numerical_zero, numerical_zero);
+    exit(EXIT_FAILURE);
   }
 
-  checkCudaErrors(
-      cudaMemcpy(d_M_inv, M_inv, N * sizeof(double), cudaMemcpyHostToDevice));
-  // ===============================================
+  // 6. 执行ILU(0)数值分解
+  cusparseDcsrilu02(cusparseHandle, N, nnz, descrA, d_csr_values_ILU,
+                    d_csr_offsets, d_csr_columns, info_ilu,
+                    CUSPARSE_SOLVE_POLICY_USE_LEVEL, buffer_ilu);
+
+  // 检查分解结果
+  status =
+      cusparseXcsrilu02_zeroPivot(cusparseHandle, info_ilu, &numerical_zero);
+  if (CUSPARSE_STATUS_ZERO_PIVOT == status) {
+    printf("U(%d,%d) 为零\n", numerical_zero, numerical_zero);
+    exit(EXIT_FAILURE);
+  }
+
+  // 7. 为三角求解器创建描述符和信息结构体
+  // 创建L和U的描述符
+  cusparseMatDescr_t descrL = 0;
+  cusparseCreateMatDescr(&descrL);
+  cusparseSetMatType(descrL, CUSPARSE_MATRIX_TYPE_GENERAL);
+  cusparseSetMatIndexBase(descrL, CUSPARSE_INDEX_BASE_ZERO);
+  cusparseSetMatFillMode(descrL, CUSPARSE_FILL_MODE_LOWER); // 下三角矩阵
+  cusparseSetMatDiagType(descrL, CUSPARSE_DIAG_TYPE_UNIT);  // 单位对角
+
+  cusparseMatDescr_t descrU = 0;
+  cusparseCreateMatDescr(&descrU);
+  cusparseSetMatType(descrU, CUSPARSE_MATRIX_TYPE_GENERAL);
+  cusparseSetMatIndexBase(descrU, CUSPARSE_INDEX_BASE_ZERO);
+  cusparseSetMatFillMode(descrU, CUSPARSE_FILL_MODE_UPPER); // 上三角矩阵
+  cusparseSetMatDiagType(descrU, CUSPARSE_DIAG_TYPE_NON_UNIT); // 非单位对角
+
+  // 创建三角求解器信息结构体
+  csrsv2Info_t infoL = 0;
+  csrsv2Info_t infoU = 0;
+  cusparseCreateCsrsv2Info(&infoL);
+  cusparseCreateCsrsv2Info(&infoU);
+
+  // 8. 为下三角求解器分析
+  int bufferSizeL = 0;
+  cusparseDcsrsv2_bufferSize(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+                             N, nnz, descrL, d_csr_values_ILU, d_csr_offsets,
+                             d_csr_columns, infoL, &bufferSizeL);
+
+  void *bufferL = 0;
+  cudaMalloc(&bufferL, bufferSizeL);
+
+  cusparseDcsrsv2_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, N,
+                           nnz, descrL, d_csr_values_ILU, d_csr_offsets,
+                           d_csr_columns, infoL,
+                           CUSPARSE_SOLVE_POLICY_USE_LEVEL, bufferL);
+
+  // 9. 为上三角求解器分析
+  int bufferSizeU = 0;
+  cusparseDcsrsv2_bufferSize(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+                             N, nnz, descrU, d_csr_values_ILU, d_csr_offsets,
+                             d_csr_columns, infoU, &bufferSizeU);
+
+  void *bufferU = 0;
+  cudaMalloc(&bufferU, bufferSizeU);
+
+  cusparseDcsrsv2_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, N,
+                           nnz, descrU, d_csr_values_ILU, d_csr_offsets,
+                           d_csr_columns, infoU,
+                           CUSPARSE_SOLVE_POLICY_USE_LEVEL, bufferU);
+  // ======================================================
 
   double one = 1.0;
   double zero = 0.0;
@@ -251,21 +348,12 @@ int conjugateGradient_solver(int iters_, double tol_) {
   cout << "Computing initial residual..." << endl;
   checkCudaErrors(cublasDaxpy(cublasHandle, N, &minus_one, d_Ax, 1, d_r, 1));
 
-  // ======== 关键修复：预条件子应用（正确参数顺序） ========
-  cout << "Applying Jacobi preconditioner..." << endl;
-  int blockSize = 256;
-  int numBlocks = (N + blockSize - 1) / blockSize;
-
-  // 正确参数顺序：N, d_M_inv, d_r, d_z
-  apply_jacobi_preconditioner<<<numBlocks, blockSize>>>(N, d_M_inv, d_r, d_z);
-
-  // 添加CUDA内核错误检查
-  cudaError_t kernelErr = cudaGetLastError();
-  if (kernelErr != cudaSuccess) {
-    cout << "CUDA kernel error: " << cudaGetErrorString(kernelErr) << endl;
-  }
+  // 应用ILU预条件子
+  cout << "Applying ILU(0) preconditioner..." << endl;
+  apply_ilu_preconditioner(cusparseHandle, descrL, descrU, infoL, infoU, N, nnz,
+                           d_csr_offsets, d_csr_columns, d_csr_values_ILU, d_r,
+                           d_z, bufferL, bufferU, d_y);
   cudaDeviceSynchronize();
-  // ===============================================
 
   // 计算 rz = r·z
   checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_z, 1, &rz_old));
@@ -311,8 +399,10 @@ int conjugateGradient_solver(int iters_, double tol_) {
     double neg_alpha = -alpha;
     checkCudaErrors(cublasDaxpy(cublasHandle, N, &neg_alpha, d_Ax, 1, d_r, 1));
 
-    // 再次应用预条件子（正确参数顺序）
-    apply_jacobi_preconditioner<<<numBlocks, blockSize>>>(N, d_M_inv, d_r, d_z);
+    // 应用ILU预条件子
+    apply_ilu_preconditioner(cusparseHandle, descrL, descrU, infoL, infoU, N,
+                             nnz, d_csr_offsets, d_csr_columns,
+                             d_csr_values_ILU, d_r, d_z, bufferL, bufferU, d_y);
     cudaDeviceSynchronize();
 
     // 计算新的点积 rz_new = r·z
@@ -332,10 +422,10 @@ int conjugateGradient_solver(int iters_, double tol_) {
 
     RESI = sqrt(r1) / sqrt(rr);
     if (k % 1 == 0) { // 每次迭代都输出
-      printf("PCG iteration:%3d\tresidual:%e\n", k, RESI);
+      printf("PCG (ILU) iteration:%3d\tresidual:%e\n", k, RESI);
     }
   }
-  printf("Final PCG iteration:%3d\tresidual:%e\n", k, RESI);
+  printf("Final PCG (ILU) iteration:%3d\tresidual:%e\n", k, RESI);
 
   endTime = clock();
   cout << "PCG SOLVE COSTS:"
@@ -353,9 +443,30 @@ int conjugateGradient_solver(int iters_, double tol_) {
   }
 
   // 释放内存
-  delete[] M_inv;
   cudaFree(d_z);
-  cudaFree(d_M_inv);
+  cudaFree(d_y);
+
+  // 释放ILU相关资源
+  if (buffer_ilu)
+    cudaFree(buffer_ilu);
+  if (bufferL)
+    cudaFree(bufferL);
+  if (bufferU)
+    cudaFree(bufferU);
+
+  if (descrA)
+    cusparseDestroyMatDescr(descrA);
+  if (descrL)
+    cusparseDestroyMatDescr(descrL);
+  if (descrU)
+    cusparseDestroyMatDescr(descrU);
+  if (info_ilu)
+    cusparseDestroyCsrilu02Info(info_ilu);
+  if (infoL)
+    cusparseDestroyCsrsv2Info(infoL);
+  if (infoU)
+    cusparseDestroyCsrsv2Info(infoU);
+  cudaFree(d_csr_values_ILU);
 
   cusparseDestroy(cusparseHandle);
   cublasDestroy(cublasHandle);
@@ -387,8 +498,8 @@ int conjugateGradient_solver(int iters_, double tol_) {
 }
 
 int main() {
-  int iters = 10000;
-  double tol = 1e-20;
+  int iters = 1000;
+  double tol = 1e-10;
 
   cout << "iters:" << iters << endl;
   cout << "tol:" << tol << endl;

@@ -18,7 +18,7 @@ find_library(CUSOLVER_LIBRARY cusolver /usr/local/cuda-12.6/targets/x86_64-linux
 #fadbad++
 include_directories(/home/rong/Mycode/lib/FADBAD++-2.1/FADBAD++/)
 # add_executable
-add_executable(${PROJECT_NAME} ${CURRENT_WORK_PATH}/src/Solver_openmp.cpp)
+add_executable(${PROJECT_NAME} ${CURRENT_WORK_PATH}/src/Solver_openmp.cu)
 # 链接OpenMP库
 find_package(OpenMP REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX)

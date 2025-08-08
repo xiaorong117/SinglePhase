@@ -12,7 +12,6 @@
 #include <sstream>
 #include <string>
 
-
 #include <dirent.h>
 #include <filesystem>
 #include <sys/types.h>
@@ -24,7 +23,6 @@
 #include <gsl/gsl_multiroots.h>
 #include <gsl/gsl_poly.h>
 #include <gsl/gsl_roots.h>
-
 
 // For AMGX
 #include <amgx_c.h>
@@ -519,6 +517,8 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_) {
                                &alpha, matA, vecx, &beta, vecAx, CUDA_R_64F,
                                CUSPARSE_SPMV_ALG_DEFAULT, buffer));
   checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &rr));
+  cout << "Initial residual norm: " << sqrt(rr) << " (rr = " << rr << ")"
+       << endl;
   checkCudaErrors(cublasDaxpy(cublasHandle, N, &alpham1, d_Ax, 1, d_r, 1));
   checkCudaErrors(cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1));
 
@@ -2896,7 +2896,7 @@ void PNMsolver::conjugateGradient_solver_per(double i) {
   para_cal(1);
   Matrix_permeability(1);
 
-  conjugateGradient_solver(100000, 1e-9);
+  conjugateGradient_solver(10000, 1e-9);
   macro = macro_outlet_Q();
   micro_advec = micro_outlet_advec_Q();
 
@@ -5599,7 +5599,8 @@ void PNMsolver::output(int n, int m) {
   // Tb[i].Surface_diff_conduc * abs(K_langmuir * Pb[Tb[i].ID_1].pressure / (1 +
   // K_langmuir * Pb[Tb[i].ID_1].pressure) - K_langmuir *
   // Pb[Tb[i].ID_2].pressure / (1 + K_langmuir * Pb[Tb[i].ID_2].pressure)) /
-  // (average_density * 16e-3); 	outfile << kkk << endl; 	if (Tb[i].ID_1 < macro_n
+  // (average_density * 16e-3); 	outfile << kkk << endl; 	if
+  // (Tb[i].ID_1 < macro_n
   // && Tb[i].ID_2 < macro_n) // 大孔 主通道
   // 	{
   // 		macro_diff_flux.push_back(kkk);
@@ -5628,7 +5629,8 @@ void PNMsolver::output(int n, int m) {
   // Tb[i].Surface_diff_conduc * abs(K_langmuir * Pb[Tb[i].ID_1].pressure / (1 +
   // K_langmuir * Pb[Tb[i].ID_1].pressure) - K_langmuir *
   // Pb[Tb[i].ID_2].pressure / (1 + K_langmuir * Pb[Tb[i].ID_2].pressure)) /
-  // (average_density * 16e-3); 	if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n
+  // (average_density * 16e-3); 	if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 <
+  // macro_n
   // && kkk > Thred3) // 大孔 主通道
   // 	{
   // 		Tb[i].main_surface = int(0);
@@ -5756,7 +5758,8 @@ void PNMsolver::output(int n, int m) {
   // Tb[i].Surface_diff_conduc * abs(K_langmuir * Pb[Tb[i].ID_1].pressure / (1 +
   // K_langmuir * Pb[Tb[i].ID_1].pressure) - K_langmuir *
   // Pb[Tb[i].ID_2].pressure / (1 + K_langmuir * Pb[Tb[i].ID_2].pressure)) /
-  // (average_density * 16e-3); 	outfile << kkk << endl; 	if (Tb[i].ID_1 < macro_n
+  // (average_density * 16e-3); 	outfile << kkk << endl; 	if
+  // (Tb[i].ID_1 < macro_n
   // && Tb[i].ID_2 < macro_n) // 大孔 主通道
   // 	{
   // 		macro_diff_flux.push_back(kkk);
@@ -5785,7 +5788,8 @@ void PNMsolver::output(int n, int m) {
   // Tb[i].Surface_diff_conduc * abs(K_langmuir * Pb[Tb[i].ID_1].pressure / (1 +
   // K_langmuir * Pb[Tb[i].ID_1].pressure) - K_langmuir *
   // Pb[Tb[i].ID_2].pressure / (1 + K_langmuir * Pb[Tb[i].ID_2].pressure)) /
-  // (average_density * 16e-3); 	if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 < macro_n
+  // (average_density * 16e-3); 	if (Tb[i].ID_1 < macro_n && Tb[i].ID_2 <
+  // macro_n
   // && kkk > Thred3) // 大孔 主通道
   // 	{
   // 		Tb[i].main_surface = int(0);
@@ -6037,9 +6041,10 @@ void PNMsolver::output(double i) {
   // {
   // 	double average_rho = 0.016 * (Pb[Tb[i].ID_1].pressure /
   // (Pb[Tb[i].ID_1].compre * 8.314 * Temperature) + Pb[Tb[i].ID_2].pressure /
-  // (Pb[Tb[i].ID_2].compre * 8.314 * Temperature)) / 2; 	double average_pressure
-  // = (Pb[Tb[i].ID_1].pressure + Pb[Tb[i].ID_2].pressure) / 2; 	outfile <<
-  // Tb[i].Surface_diff_conduc * K_langmuir / (1 + K_langmuir * average_pressure
+  // (Pb[Tb[i].ID_2].compre * 8.314 * Temperature)) / 2; 	double
+  // average_pressure = (Pb[Tb[i].ID_1].pressure + Pb[Tb[i].ID_2].pressure) / 2;
+  // outfile << Tb[i].Surface_diff_conduc * K_langmuir / (1 + K_langmuir *
+  // average_pressure
   // * average_rho) << endl;
   // }
 }
@@ -9323,9 +9328,10 @@ int main(int argc, char **argv) {
   // 	double viscos = Berea.visco(pre, z, Temperature);
   // // pa.s 	double Knusen_number = viscos / pre * sqrt(pi * z * 8.314 *
   // Temperature / (2 * 0.016)) / (W); 	double alpha = 1.358 * 2 / pi * atan(4 *
-  // pow(Knusen_number, 0.4)); 	double beta = 4; 	double Slip = (1 + alpha *
-  // Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number)); 	Tij <<
-  // (viscos * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * pre, 2) / rho_g
+  // pow(Knusen_number, 0.4)); 	double beta = 4; 	double Slip = (1 + alpha
+  // * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
+  // Tij << (viscos * Ds * n_max_ad * K_langmuir / pow(1 + K_langmuir * pre, 2)
+  // / rho_g
   // + Slip * ko) / 1e-21 << endl;
   // }
   // Tij.close();
@@ -9337,11 +9343,11 @@ int main(int argc, char **argv) {
   // 	auto r = 0.1888e-6;
   // 	auto km = 0.0351e-15; //K_Clay_HP=62.96e-15;  0.91e-6
   // #粘土单元本征渗透率 m2    K_Clay_LP=0.388e-15; 0.1e-6  #粘土单元本征渗透率
-  // m2 	auto z{Berea.compre(pressure)}; 	auto vis(Berea.visco(pressure, z,
-  // Temperature)); 	double rho = 0.016 * pressure / (z * 8.314 * Temperature);
-  // 	auto Knusen_number = vis / pressure * sqrt(pi * z * 8.314 * Temperature
-  // / (2 * 0.016)) / r; 	auto Slip = Berea.Function_Slip_clay(Knusen_number);
-  // 	auto out = Slip * km;
+  // m2 	auto z{Berea.compre(pressure)}; 	auto
+  // vis(Berea.visco(pressure, z, Temperature)); 	double rho = 0.016 *
+  // pressure / (z * 8.314 * Temperature); 	auto Knusen_number = vis /
+  // pressure * sqrt(pi * z * 8.314 * Temperature / (2 * 0.016)) / r; 	auto
+  // Slip = Berea.Function_Slip_clay(Knusen_number); 	auto out = Slip * km;
   // 	// auto out = Slip * km + 1/rho * vis * Ds * n_max_ad * K_langmuir / (1
   // + K_langmuir * pressure); 	Tij_micro << "Tij= " << out/1e-15 <<
   // "\t;Knusen_number= " << Knusen_number << "\t;slip= " << Slip <<
@@ -9354,11 +9360,13 @@ int main(int argc, char **argv) {
   // {
   // 	auto pressure = i * 1e6;
   // 	Ds = (Ds_LIST[6] - Ds_LIST[0]) / (50e6 - 1e6) * (pressure - 1e6) +
-  // Ds_LIST[0]; 	auto R = 75e-9; 	auto r = 1.8e-9; 	auto length = 4e-9; 	auto
-  // z{Berea.compre(pressure)}; 	auto vis(Berea.visco(pressure, z, Temperature));
-  // 	double rho = 0.016 * pressure / (z * 8.314 * Temperature);
-  // 	auto out = pi * pow(length, 2) * Ds * n_max_ad * K_langmuir / (1 +
-  // K_langmuir * pressure) / (rho * length); 	Tij_bar << "Tij_bar=" << out <<
+  // Ds_LIST[0]; 	auto R = 75e-9; 	auto r = 1.8e-9; 	auto
+  // length = 4e-9; 	auto z{Berea.compre(pressure)}; 	auto
+  // vis(Berea.visco(pressure, z, Temperature)); 	double rho = 0.016 *
+  // pressure / (z * 8.314 * Temperature); 	auto out = pi * pow(length, 2) *
+  // Ds * n_max_ad * K_langmuir / (1 + K_langmuir * pressure) / (rho * length);
+  // Tij_bar
+  // << "Tij_bar=" << out <<
   // ";pressure=" << pressure / 1e6 << endl;
   // }
   // Tij_bar.close();
@@ -9374,8 +9382,9 @@ int main(int argc, char **argv) {
   // 	auto o = 44.5 * pressure / (25 + pressure);
   // 	nad << "pressure=" << pressure << ";gas=" << (porosity - out / Rho_ad) *
   // rho << ";porosity=" << (porosity - out / Rho_ad) << ";rho = " << rho <<
-  // endl; 	nn << "pressure=" << pressure << ";gas=" << (porosity - o / Rho_ad) *
-  // rho << ";porosity=" << (porosity - o / Rho_ad) << ";rho = " << rho << endl;
+  // endl; 	nn << "pressure=" << pressure << ";gas=" << (porosity - o /
+  // Rho_ad) * rho << ";porosity=" << (porosity - o / Rho_ad) << ";rho = " <<
+  // rho << endl;
   // }
   // nad.close();
   // nn.close();
