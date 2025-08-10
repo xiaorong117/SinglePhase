@@ -52,7 +52,8 @@ using namespace std::chrono;
 const double CLOCKS_PER_SECOND = ((clock_t)1000);
 double iters_globa{0};
 // GasAdsorptionData PSD_data("Pore_size_distribution.txt");
-
+static int icount{0};
+static int iii{0};
 void progress_bar(float progress, int bar_width = 50) {
   int pos = bar_width * progress;
   std::cout << "[";
@@ -421,9 +422,10 @@ public:
 
   ~PNMsolver() // 析构函数，释放动态存储
   {
-    // delete[] dX, B;
-    // delete[] ia, ja, a, irn, jcn;
-    // delete[] Pb, Tb_in, Tb;
+    delete[] dX, B;
+    delete[] ia, ja, a, irn, jcn;
+    delete[] Pb, Tb_in, Tb;
+    delete[] COO_A;
   }
 };
 
@@ -6405,7 +6407,6 @@ void PNMsolver::AMGX_solver_subroutine(AMGX_matrix_handle &A_amgx,
                                        AMGX_solver_handle &solver, int n_amgx,
                                        int nnz_amgx) {
   auto start = high_resolution_clock::now();
-  static int icount{0};
   if (icount == 0) {
     AMGX_matrix_upload_all(A_amgx, n_amgx, nnz_amgx, 1, 1, ia, ja, a, 0);
     AMGX_solver_setup(solver, A_amgx);
@@ -6455,7 +6456,6 @@ void PNMsolver::AMGX_solver_subroutine_per(AMGX_matrix_handle &A_amgx,
                                            AMGX_solver_handle &solver,
                                            int n_amgx, int nnz_amgx) {
   auto start = high_resolution_clock::now();
-  static int icount{0};
   if (icount == 0) {
     AMGX_matrix_upload_all(A_amgx, n_amgx, nnz_amgx, 1, 1, ia, ja, a, 0);
     AMGX_solver_setup(solver, A_amgx);
@@ -7629,7 +7629,7 @@ void PNMsolver::AMGX_permeability_solver() {
   Function_DS(inlet_pre + refer_pressure);
   memory();
 
-  // refer_pressure = 1e6;
+  refer_pressure += iii * 1e6;
   Paramentinput();
   initial_condition();
   para_cal();
@@ -7667,106 +7667,38 @@ void PNMsolver::AMGX_permeability_solver() {
   // ************ begin AMGX solver ************
   AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx,
                              nnz_amgx);
-  for (size_t i = 2; i < 52; i++) {
+
+  inter_n = 0;
+  do {
     para_cal_in_newton();
     Matrix_permeability();
     AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx,
                                nnz_amgx);
-    inter_n = 0;
-    do {
-      para_cal_in_newton();
-      Matrix_permeability();
-      AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx,
-                                 nnz_amgx);
-      inter_n++;
-      cout << "Inf_norm = " << norm_inf << "\t\t" << "inner loop = " << inter_n
-           << "\t\t" << endl;
-    } while (norm_inf > eps_per);
-    if (Flag_outputvtk == true) {
-      output(1, 1);
-    }
-
-    // int kk = refer_pressure / 1e6;
-    // apparent_average_poresize(kk);
-    macro = macro_outlet_Q();
-    micro_advec = micro_outlet_advec_Q();
-    micro_diff = micro_outlet_diff_Q();
-
-    auto stop2 = high_resolution_clock::now();
-    auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-
-    outfile << (macro + micro_advec + micro_diff) *
-                   visco(inlet_pre + refer_pressure,
-                         compre(inlet_pre + refer_pressure), Temperature) *
-                   domain_length * voxel_size /
-                   (pow(domain_size_cubic * voxel_size, 2) *
-                    (inlet_pre - outlet_pre)) /
-                   1e-21
-            << "\t" << (inlet_pre + refer_pressure) / 1e6 << "\t"
-            << duration2.count() / 1000 << "s" << "\t" << endl;
-    refer_pressure += 1e6;
-    Function_DS(inlet_pre + refer_pressure);
-    initial_condition();
-    total_macro = 0;
-    total_micro_free = 0;
-    total_micro_ad = 0;
-    for (int i = inlet; i < macro_n - outlet; i++) {
-      double compre_1 = compre(inlet_pre + refer_pressure);
-      double compre_2 = compre(outlet_pre + refer_pressure);
-      total_macro += (inlet_pre + refer_pressure) * Pb[i].volume * 16 /
-                         (compre_1 * 8.314 * Temperature) -
-                     (outlet_pre + refer_pressure) * Pb[i].volume * 16 /
-                         (compre_2 * 8.314 * Temperature);
-    }
-    for (int i = macro_n + m_inlet; i < pn - m_outlet; i++) {
-      double compre_1 = compre(inlet_pre + refer_pressure);
-      double compre_2 = compre(outlet_pre + refer_pressure);
-
-      double n_ad1 =
-          n_max_ad * (K_langmuir * (inlet_pre + refer_pressure) /
-                      (1 + K_langmuir * (inlet_pre + refer_pressure)));
-      double n_ad2 =
-          n_max_ad * (K_langmuir * (outlet_pre + refer_pressure) /
-                      (1 + K_langmuir * (outlet_pre + refer_pressure)));
-
-      total_micro_free += (inlet_pre + refer_pressure) *
-                              (Pb[i].porosity - n_ad1 / Rho_ad) * Pb[i].volume *
-                              16 / (compre_1 * 8.314 * Temperature) -
-                          (outlet_pre + refer_pressure) * Pb[i].volume *
-                              (Pb[i].porosity - n_ad2 / Rho_ad) * 16 /
-                              (compre_2 * 8.314 * Temperature);
-      total_micro_ad += Pb[i].volume * (n_ad1 - n_ad2) * 1000;
-    }
+    inter_n++;
+    cout << "Inf_norm = " << norm_inf << "\t\t" << "inner loop = " << inter_n
+         << "\t\t" << endl;
+  } while (norm_inf > eps_per);
+  if (Flag_outputvtk == true) {
+    output(1, 1);
   }
+  // int kk = refer_pressure / 1e6;
+  // apparent_average_poresize(kk);
+  macro = macro_outlet_Q();
+  micro_advec = micro_outlet_advec_Q();
+  micro_diff = micro_outlet_diff_Q();
 
-  // para_cal_in_newton();
-  // Matrix_permeability();
-  // AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx,
-  // nnz_amgx); inter_n = 0; do
-  // {
-  // para_cal_in_newton();
-  // Matrix_permeability();
-  // AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx,
-  // nnz_amgx); inter_n++; cout << "Inf_norm = " << norm_inf << "\t\t"
-  //  << "inner loop = " << inter_n
-  //  << "\t\t" << endl;
-  // } while (norm_inf > eps_per);
-  //
-  // macro = macro_outlet_Q();
-  // micro_advec = micro_outlet_advec_Q();
-  // micro_diff = micro_outlet_diff_Q();
-  //
-  // auto stop2 = high_resolution_clock::now();
-  // auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-  //
-  // outfile << (macro + micro_advec + micro_diff) * visco(inlet_pre +
-  // refer_pressure, compre(inlet_pre + refer_pressure), Temperature) *
-  // domain_size_cubic * voxel_size / (pow(domain_size_cubic * voxel_size, 2) *
-  // (inlet_pre - outlet_pre)) / 1e-21 << "\t"
-  // << (inlet_pre + refer_pressure) / 1e6 << "\t"
-  // << duration2.count() / 1000 << "s" << "\t"
-  // << endl;
-  // outfile.close();
+  auto stop2 = high_resolution_clock::now();
+  auto duration2 = duration_cast<milliseconds>(stop2 - start1);
+
+  outfile << (macro + micro_advec + micro_diff) *
+                 visco(inlet_pre + refer_pressure,
+                       compre(inlet_pre + refer_pressure), Temperature) *
+                 domain_length * voxel_size /
+                 (pow(domain_size_cubic * voxel_size, 2) *
+                  (inlet_pre - outlet_pre)) /
+                 1e-21
+          << "\t" << (inlet_pre + refer_pressure) / 1e6 << "\t"
+          << duration2.count() / 1000 << "s" << "\t" << endl;
 
   /***********************销毁AMGX***************************/
   AMGX_unpin_memory(ia);
@@ -9226,46 +9158,54 @@ int main(int argc, char **argv) {
   }
   // Berea.mean_pore_size();
 
-  PNMsolver Berea;
-  switch (Mode) {
-  case 1:
-    Berea.AMGXsolver();
-    break;
-  case 2:
-    Berea.AMGX_permeability_solver(1);
-    break;
-  case 3:
-    Berea.AMGX_permeability_solver();
-    break;
-  case 4:
-    Berea.AMGX_solver_REV();
-    break;
-  case 5:
-    Berea.AMGX_solver_apparent_permeability_REV();
-    break;
-  case 6:
-    Berea.Eigen_solver_per(
-        1); // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
-    break;
-  case 7:
-    Berea.Eigen_solver_per(); // 1 代表 本征渗透率 计算 没有参数代表
-                              // 表观渗透率计算
-    break;
-  case 8:
-    Berea.AMGX_solver_intri_permeability_REV();
-    break;
-  case 9:
-    Berea.Eigen_solver_intri_REV();
-    break;
-  case 10:
-    Berea.conjugateGradient_solver_per(1);
-    break;
-  case 11:
-    Berea.conjugateGradient_solver_per();
-  default:
-    break;
-  }
+  // PNMsolver Berea;
+  // switch (Mode) {
+  // case 1:
+  //   Berea.AMGXsolver();
+  //   break;
+  // case 2:
+  //   Berea.AMGX_permeability_solver(1);
+  //   break;
+  // case 3:
+  //   Berea.AMGX_permeability_solver();
+  //   break;
+  // case 4:
+  //   Berea.AMGX_solver_REV();
+  //   break;
+  // case 5:
+  //   Berea.AMGX_solver_apparent_permeability_REV();
+  //   break;
+  // case 6:
+  //   Berea.Eigen_solver_per(
+  //       1); // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
+  //   break;
+  // case 7:
+  //   Berea.Eigen_solver_per(); // 1 代表 本征渗透率 计算 没有参数代表
+  //                             // 表观渗透率计算
+  //   break;
+  // case 8:
+  //   Berea.AMGX_solver_intri_permeability_REV();
+  //   break;
+  // case 9:
+  //   Berea.Eigen_solver_intri_REV();
+  //   break;
+  // case 10:
+  //   Berea.conjugateGradient_solver_per(1);
+  //   break;
+  // case 11:
+  //   Berea.conjugateGradient_solver_per();
+  // default:
+  //   break;
+  // }
 
+  for (int i = 0; i < 50; i++) {
+    PNMsolver *obj = new PNMsolver(); // 动态分配
+    obj->AMGX_permeability_solver();
+    delete obj;    // 手动销毁
+    obj = nullptr; // 避免悬空指针，可选但推荐
+    iii += 1;
+    icount = 0; // 重置迭代计数器
+  }
   /*产气模拟*/
   // Berea.Eigen_solver();
   // Berea.AMGXsolver();

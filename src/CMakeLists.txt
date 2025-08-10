@@ -18,7 +18,7 @@ find_library(CUSOLVER_LIBRARY cusolver /usr/local/cuda-12.6/targets/x86_64-linux
 #fadbad++
 include_directories(/home/rong/Mycode/lib/FADBAD++-2.1/FADBAD++/)
 # add_executable
-add_executable(${PROJECT_NAME} ${CURRENT_WORK_PATH}/src/Solver_openmp.cu)
+add_executable(${PROJECT_NAME} ${CURRENT_WORK_PATH}/src/Solver_openmp.cpp)
 # 链接OpenMP库
 find_package(OpenMP REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX)
@@ -34,7 +34,7 @@ set_target_properties(${PROJECT_NAME}
 # 链接库
 target_include_directories(${PROJECT_NAME} PRIVATE ${CURRENT_WORK_PATH}/src)
 target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/Mycode/lib/AMGX/include)
-target_link_libraries(${PROJECT_NAME} PUBLIC -static-libstdc++ -static-libgcc)
+# target_link_libraries(${PROJECT_NAME} PUBLIC -static-libstdc++ -static-libgcc)
 # target_link_libraries(${PROJECT_NAME} PUBLIC "/home/rong/Mycode/lib/AMGX/build/libamgx.a")
 # target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcusolver_static.a")
 # target_link_libraries(${PROJECT_NAME} PUBLIC  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcublas_static.a")
