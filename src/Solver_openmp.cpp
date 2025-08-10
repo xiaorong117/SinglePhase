@@ -6408,11 +6408,11 @@ void PNMsolver::AMGX_solver_subroutine(AMGX_matrix_handle &A_amgx,
   static int icount{0};
   if (icount == 0) {
     AMGX_matrix_upload_all(A_amgx, n_amgx, nnz_amgx, 1, 1, ia, ja, a, 0);
+    AMGX_solver_setup(solver, A_amgx);
     icount += 1;
   } else {
     AMGX_matrix_replace_coefficients(A_amgx, n_amgx, nnz_amgx, a, 0);
   }
-  AMGX_solver_setup(solver, A_amgx);
   AMGX_vector_upload(b_amgx, n_amgx, 1, B);
   AMGX_vector_set_zero(solution_amgx, n_amgx, 1);
   AMGX_solver_solve_with_0_initial_guess(solver, b_amgx, solution_amgx);
@@ -6458,11 +6458,11 @@ void PNMsolver::AMGX_solver_subroutine_per(AMGX_matrix_handle &A_amgx,
   static int icount{0};
   if (icount == 0) {
     AMGX_matrix_upload_all(A_amgx, n_amgx, nnz_amgx, 1, 1, ia, ja, a, 0);
+    AMGX_solver_setup(solver, A_amgx);
     icount += 1;
   } else {
     AMGX_matrix_replace_coefficients(A_amgx, n_amgx, nnz_amgx, a, 0);
   }
-  AMGX_solver_setup(solver, A_amgx);
   AMGX_vector_upload(b_amgx, n_amgx, 1, B);
   AMGX_vector_set_zero(solution_amgx, n_amgx, 1);
   AMGX_solver_solve_with_0_initial_guess(solver, b_amgx, solution_amgx);
