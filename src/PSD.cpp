@@ -382,9 +382,9 @@ public:
 
     // std::array<double,2>arr = {K_apparent_w, K_apparent};
     if (Flag_intrin == true) {
-      return calculatePermeability_intrin(min_w(), w2); // 使用本征渗透率计算
-      // double W = 6.30e-9; //
-      // return pow(W,2) * 0.134 / 1.5 / 32;
+      // return calculatePermeability_intrin(min_w(), w2); // 使用本征渗透率计算
+      double W = 5.22e-9; //
+      return pow(W, 2) * 0.134 / 1.5 / 32;
     } else {
       return K_apparent(w2);
       // return calculatePermeability(min_w(),w2); // 使用表观渗透率计算
@@ -418,8 +418,8 @@ public:
       ko = 3904.12E-21;
     }
 
-    // W = 8e-9;
-    // ko = pow(6.3e-9, 2) * 0.134 / 1.5 / 32;
+    W = 5.5e-9;
+    ko = pow(5.22e-9, 2) * 0.134 / 1.5 / 32;
     double pre = Average_pressure;
     double z = Average_compre;
     double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3

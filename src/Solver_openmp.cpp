@@ -2,6 +2,7 @@
 #include "Eigen/Eigen"
 #include "Eigen/IterativeLinearSolvers"
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <fstream>
 #include <iostream>
@@ -589,7 +590,12 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_) {
   // 	out << "x[" << i << "] = " << x[i] << endl;
   // }
   // out.close();
-
+  norm_inf = 0;
+  for (int i = 0; i < op + mp; i++) {
+    norm_inf += x[i] * x[i];
+  }
+  norm_inf = sqrt(norm_inf);
+  cout << "Inf_norm = " << norm_inf << endl;
   // 更新应力场
   if (Flag_intri_per == true) {
     // 更新应力场
@@ -2896,7 +2902,46 @@ void PNMsolver::conjugateGradient_solver_per(double i) {
   para_cal(1);
   Matrix_permeability(1);
 
-  conjugateGradient_solver(10000, 1e-9);
+  conjugateGradient_solver(100000, 1e-9);
+
+  /*贪婪最大路径*/
+  ofstream greedy("throat.txt");
+  for (size_t i = 0; i < Pb[pn - 1].full_accum; i++) {
+    greedy << i << "\t" << Tb[i].ID_1 << " " << Tb[i].ID_2 << " "
+           << Tb[i].Conductivity *
+                  (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure)
+           << " " << Tb[i].Length << " " << Tb[i].Radiu << endl;
+  }
+  greedy.close();
+
+  ofstream outfile1("inlet.txt");
+  ofstream outfile2("outlet.txt");
+  for (size_t i = 0; i < inlet; i++) {
+    outfile1 << i << endl;
+  }
+
+  for (size_t i = macro_n; i < macro_n + m_inlet; i++) {
+    outfile1 << i << endl;
+  }
+  outfile1.close();
+
+  for (size_t i = inlet + op; i < macro_n; i++) {
+    outfile2 << i << endl;
+  }
+
+  for (size_t i = macro_n + m_inlet + mp; i < pn; i++) {
+    outfile2 << i << endl;
+  }
+  outfile2.close();
+
+  ofstream outfile3("pore.txt");
+  for (size_t i = 0; i < pn; i++) {
+    outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z
+             << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type
+             << "\t" << Pb[i].Radiu << endl;
+  }
+  outfile3.close();
+
   macro = macro_outlet_Q();
   micro_advec = micro_outlet_advec_Q();
 
@@ -2939,16 +2984,16 @@ void PNMsolver::conjugateGradient_solver_per() {
   para_cal();
   Matrix_permeability();
 
-  conjugateGradient_solver(100000, 1e-9);
+  conjugateGradient_solver(100000, 1e-7);
   for (size_t i = 2; i < 52; i++) {
     para_cal_in_newton();
     Matrix_permeability();
-    conjugateGradient_solver(100000, 1e-9);
+    conjugateGradient_solver(100000, 1e-7);
     inter_n = 0;
     do {
       para_cal_in_newton();
       Matrix_permeability();
-      conjugateGradient_solver(100000, 1e-9);
+      conjugateGradient_solver(100000, 1e-7);
       inter_n++;
       cout << "Inf_norm = " << norm_inf << "\t\t" << "inner loop = " << inter_n
            << "\t\t" << endl;
@@ -4008,6 +4053,7 @@ void PNMsolver::para_cal() {
   Tb[0].Surface_diff_conduc = Tb_in[0].Surface_diff_conduc;
   Tb[0].Knusen = Tb_in[0].Knusen;
   Tb[0].Slip = Tb_in[0].Slip;
+  Tb[0].Length = Tb_in[0].Length;
   for (int i = 1; i < 2 * tn; i++) {
     if (Tb[label].ID_1 == Tb_in[i].ID_1 && Tb[label].ID_2 == Tb_in[i].ID_2) {
       Tb[label].Conductivity += Tb_in[i].Conductivity;
@@ -4020,6 +4066,7 @@ void PNMsolver::para_cal() {
       Tb[label].Surface_diff_conduc = Tb_in[i].Surface_diff_conduc;
       Tb[label].Knusen = Tb_in[i].Knusen;
       Tb[label].Slip = Tb_in[i].Slip;
+      Tb[label].Length = Tb_in[i].Length;
     }
   }
 
@@ -4347,6 +4394,7 @@ void PNMsolver::para_cal(double mode) {
   Tb[0].Surface_diff_conduc = Tb_in[0].Surface_diff_conduc;
   Tb[0].Knusen = Tb_in[0].Knusen;
   Tb[0].Slip = Tb_in[0].Slip;
+  Tb[0].Length = Tb_in[0].Length;
   for (int i = 1; i < 2 * tn; i++) {
     if (Tb[label].ID_1 == Tb_in[i].ID_1 && Tb[label].ID_2 == Tb_in[i].ID_2) {
       Tb[label].Conductivity += Tb_in[i].Conductivity;
@@ -4359,6 +4407,7 @@ void PNMsolver::para_cal(double mode) {
       Tb[label].Surface_diff_conduc = Tb_in[i].Surface_diff_conduc;
       Tb[label].Knusen = Tb_in[i].Knusen;
       Tb[label].Slip = Tb_in[i].Slip;
+      Tb[label].Length = Tb_in[i].Length;
     }
   }
 
@@ -5059,6 +5108,7 @@ void PNMsolver::Eigen_subroutine(
   // norm_inf = x.lpNorm<Eigen::Infinity>();
   // 矩阵的二阶范数
   norm_inf = x.norm();
+  cout << "Inf_norm = " << norm_inf << endl;
 
   // 更新应力场
   for (int i = inlet; i < inlet + op; i++) {
@@ -5123,6 +5173,7 @@ void PNMsolver::Eigen_subroutine_per(
   // norm_inf = x.lpNorm<Eigen::Infinity>();
   // 矩阵的二阶范数
   norm_inf = x.norm();
+  cout << "Inf_norm = " << norm_inf << endl;
 
   if (Flag_intri_per == true) {
     // 更新应力场
@@ -6372,6 +6423,7 @@ void PNMsolver::AMGX_solver_subroutine(AMGX_matrix_handle &A_amgx,
     norm_inf += dX[i] * dX[i];
   }
   norm_inf = sqrt(norm_inf);
+  cout << "Inf_norm = " << norm_inf << endl;
 
   /*--------------------------x(t+dt) = x(t) + dx----------------------*/
   // 更新应力场
@@ -6422,6 +6474,13 @@ void PNMsolver::AMGX_solver_subroutine_per(AMGX_matrix_handle &A_amgx,
   // 	dX_debug << dX[i] << endl;
   // }
   // dX_debug.close();
+  norm_inf = 0;
+  for (size_t i = 0; i < op + mp; i++) {
+    norm_inf += dX[i] * dX[i];
+  }
+  norm_inf = sqrt(norm_inf);
+  cout << "Inf_norm = " << norm_inf << endl;
+
   if (Flag_intri_per == true) {
     // 更新应力场
     for (int i = inlet; i < inlet + op; i++) {
@@ -8860,52 +8919,43 @@ void PNMsolver::AMGX_solver_intri_permeability_REV() {
                              nnz_amgx);
 
   /*贪婪最大路径*/
-  // ofstream greedy("throat.txt");
-  // for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
-  // {
-  // 	greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " <<
-  // Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) <<
-  // " " << Tb[i].Length <<  " " << Tb[i].Radiu << endl;
-  // 	// greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " <<
-  // Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) <<
-  // endl;
-  // }
-  // greedy.close();
+  ofstream greedy("throat.txt");
+  for (size_t i = 0; i < Pb[pn - 1].full_accum; i++) {
+    greedy << i << "\t" << Tb[i].ID_1 << " " << Tb[i].ID_2 << " "
+           << Tb[i].Conductivity *
+                  (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure)
+           << " " << Tb[i].Length << " " << Tb[i].Radiu << endl;
+    // greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " <<
+  }
+  greedy.close();
 
-  // ofstream outfile1("inlet.txt");
-  // ofstream outfile2("outlet.txt");
-  // for (size_t i = 0; i < inlet; i++)
-  // {
-  // 	outfile1 << i << endl;
-  // }
+  ofstream outfile1("inlet.txt");
+  ofstream outfile2("outlet.txt");
+  for (size_t i = 0; i < inlet; i++) {
+    outfile1 << i << endl;
+  }
 
-  // for (size_t i = macro_n; i < macro_n + m_inlet; i++)
-  // {
-  // 	outfile1 << i << endl;
-  // }
-  // outfile1.close();
+  for (size_t i = macro_n; i < macro_n + m_inlet; i++) {
+    outfile1 << i << endl;
+  }
+  outfile1.close();
 
-  // for (size_t i = inlet + op; i < macro_n; i++)
-  // {
-  // 	outfile2 << i << endl;
-  // }
+  for (size_t i = inlet + op; i < macro_n; i++) {
+    outfile2 << i << endl;
+  }
 
-  // for (size_t i = macro_n + m_inlet + mp; i < pn; i++)
-  // {
-  // 	outfile2 << i << endl;
-  // }
-  // outfile2.close();
+  for (size_t i = macro_n + m_inlet + mp; i < pn; i++) {
+    outfile2 << i << endl;
+  }
+  outfile2.close();
 
-  // ofstream outfile3("pore.txt");
-  // for (size_t i = 0; i < pn; i++)
-  // {
-  // 	outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z
-  // << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" <<
-  // Pb[i].Radiu <<  endl;
-  // 	// outfile3 << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z <<
-  // endl;
-  // }
-  // outfile3.close();
+  ofstream outfile3("pore.txt");
+  for (size_t i = 0; i < pn; i++) {
+    outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z
+             << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type
+             << "\t" << Pb[i].Radiu << endl;
+  }
+  outfile3.close();
 
   macro = macro_outlet_Q();
   micro_advec = micro_outlet_advec_Q();
@@ -9060,52 +9110,42 @@ void PNMsolver::AMGX_permeability_solver(double mode) {
   micro_advec = micro_outlet_advec_Q();
 
   /*贪婪最大路径*/
-  // ofstream greedy("throat.txt");
-  // for (size_t i = 0; i < Pb[pn - 1].full_accum; i++)
-  // {
-  // 	greedy << i << "\t" <<Tb[i].ID_1 << " " << Tb[i].ID_2 << " " <<
-  // Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) <<
-  // " " << Tb[i].Length <<  " " << Tb[i].Radiu << endl;
-  // 	// greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " <<
-  // Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) <<
-  // endl;
-  // }
-  // greedy.close();
+  ofstream greedy("throat.txt");
+  for (size_t i = 0; i < Pb[pn - 1].full_accum; i++) {
+    greedy << i << "\t" << Tb[i].ID_1 << " " << Tb[i].ID_2 << " "
+           << Tb[i].Conductivity *
+                  (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure)
+           << " " << Tb[i].Length << " " << Tb[i].Radiu << endl;
+  }
+  greedy.close();
 
-  // ofstream outfile1("inlet.txt");
-  // ofstream outfile2("outlet.txt");
-  // for (size_t i = 0; i < inlet; i++)
-  // {
-  // 	outfile1 << i << endl;
-  // }
+  ofstream outfile1("inlet.txt");
+  ofstream outfile2("outlet.txt");
+  for (size_t i = 0; i < inlet; i++) {
+    outfile1 << i << endl;
+  }
 
-  // for (size_t i = macro_n; i < macro_n + m_inlet; i++)
-  // {
-  // 	outfile1 << i << endl;
-  // }
-  // outfile1.close();
+  for (size_t i = macro_n; i < macro_n + m_inlet; i++) {
+    outfile1 << i << endl;
+  }
+  outfile1.close();
 
-  // for (size_t i = inlet + op; i < macro_n; i++)
-  // {
-  // 	outfile2 << i << endl;
-  // }
+  for (size_t i = inlet + op; i < macro_n; i++) {
+    outfile2 << i << endl;
+  }
 
-  // for (size_t i = macro_n + m_inlet + mp; i < pn; i++)
-  // {
-  // 	outfile2 << i << endl;
-  // }
-  // outfile2.close();
+  for (size_t i = macro_n + m_inlet + mp; i < pn; i++) {
+    outfile2 << i << endl;
+  }
+  outfile2.close();
 
-  // ofstream outfile3("pore.txt");
-  // for (size_t i = 0; i < pn; i++)
-  // {
-  // 	outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z
-  // << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" <<
-  // Pb[i].Radiu <<  endl;
-  // 	// outfile3 << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z <<
-  // endl;
-  // }
-  // outfile3.close();
+  ofstream outfile3("pore.txt");
+  for (size_t i = 0; i < pn; i++) {
+    outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z
+             << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type
+             << "\t" << Pb[i].Radiu << endl;
+  }
+  outfile3.close();
 
   double end = omp_get_wtime();
   outfile << "permeability = "
