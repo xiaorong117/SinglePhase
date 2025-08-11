@@ -418,7 +418,7 @@ public:
       ko = 3904.12E-21;
     }
 
-    W = 5.5e-9;
+    W = 4.8e-9;
     ko = pow(5.22e-9, 2) * 0.134 / 1.5 / 32;
     double pre = Average_pressure;
     double z = Average_compre;

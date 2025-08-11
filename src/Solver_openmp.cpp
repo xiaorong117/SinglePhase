@@ -3259,7 +3259,7 @@ void PNMsolver::memory() {
         dot_idx = 0;
         getline(files, sline);
       }
-
+      files.close();
       inlet_pre = oo[0];
       outlet_pre = oo[1];
       refer_pressure = oo[2];
@@ -9197,12 +9197,12 @@ int main(int argc, char **argv) {
   // default:
   //   break;
   // }
-
+  PNMsolver *obj = new PNMsolver(); // 动态分配
   for (int i = 0; i < 50; i++) {
-    PNMsolver *obj = new PNMsolver(); // 动态分配
     obj->AMGX_permeability_solver();
-    delete obj;    // 手动销毁
-    obj = nullptr; // 避免悬空指针，可选但推荐
+    delete obj;            // 手动销毁
+    obj = nullptr;         // 避免悬空指针，可选但推荐
+    obj = new PNMsolver(); // 重新分配内存
     iii += 1;
     icount = 0; // 重置迭代计数器
   }
