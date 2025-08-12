@@ -2684,7 +2684,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM() {
   auto stop3 = high_resolution_clock::now();
   auto duration3 = duration_cast<milliseconds>(stop3 - start1);
   outfile << "inner loop = " << inter_n << "\t" << "machine_time = " << duration3.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
-          << "dimensionless_time = " << time_all * ((area_main_Q().second + area_side_Q().second) / (2000 * voxel_size) / pow(sqrt(pi) / double(2) * 2200 * voxel_size, 2) / 0.2) << "\t"
+          << "dimensionless_time = " << time_all * ((area_main_Q().second + area_side_Q().second) / (2000 * voxel_size) / pow(sqrt(pi) / double(2) * 2000 * voxel_size, 2) / 0.2) << "\t"
           << "Q_main = " << area_main_Q().second * 60e6 << " ml/min" << "\t" << "Q_side = " << area_side_Q().second * 60e6 << " ml/min" << "\t" << "v_main = " << area_main_Q().first * 6e3 << " cm/min"
           << "\t" << "v_side = " << area_side_Q().first * 6e3 << " cm/min" << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6 << "\t"
           << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t"
