@@ -12,6 +12,7 @@
 #include <iostream>
 #include <iterator>
 #include <numeric>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include "Eigen/Core"
@@ -132,7 +133,7 @@ double viscosity = 2e-5;
 
 namespace Porous_media_property_Hybrid {
 double porosity = 0.1;        // 孔隙率
-double ko = 1e-8;             // 微孔达西渗透率 m^2
+double ko = 1e-18;            // 微孔达西渗透率 m^2
 double micro_radius{3.48e-9};
 }        // namespace Porous_media_property_Hybrid
 
@@ -351,12 +352,13 @@ class PNMsolver        // 定义类
   double error;
   int time_step = Time_step;
   double time_all = pyhsic_time;
-  double dt = 1e-3;
+  double dt = 1e-5;
   double dt2 = 1e-8;        // 与dt初值相同，用于输出结果文件
   double Q_outlet_macro{0};
   double Q_outlet_free_micro{0};
   double Q_outlet_ad_micro{0};
   double Q_outlet_REV{0};
+  double leaning_rate{1};        // 松弛因子
 
   double free_macro_loss{0};
   double free_micro_loss{0};
@@ -437,7 +439,7 @@ class PNMsolver        // 定义类
   reverse_mode<double> func_TRANSPORT_FLOW_in_micro(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int num);
 
   reverse_mode<double> func_BULK_PHASE_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int num);
-  reverse_mode<double> func_TRANSPORT_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int num);
+  reverse_mode<double> func_TRANSPORT_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int i, int num);
 
   void AMGXsolver_subroutine_co2_mehane(AMGX_matrix_handle& A_amgx, AMGX_vector_handle& b_amgx, AMGX_vector_handle& solution_amgx, AMGX_solver_handle& solver, int n_amgx,
                                         int nnz_amgx);        // 混合模型方程求解以及变量更新
@@ -1740,15 +1742,18 @@ reverse_mode<double> PNMsolver::conductivity_co2_DISPERSION_kong(reverse_mode<do
   }
 }
 
-reverse_mode<double> PNMsolver::func_TRANSPORT_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id) {
+reverse_mode<double> PNMsolver::func_TRANSPORT_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int i, int Pore_id) {
   reverse_mode<double> Return{0};
   reverse_mode<double> Conductivity{0};
   reverse_mode<double> Conductivity_dis_co2{0};
   size_t iCounter{0};
 
   /* 时间项 */
-  Return += Pb[Pore_id].volume * (Wi - Pb[Pore_id].mole_frac_co2_old) / dt;
-
+  if (i == 1) {
+    Return += Pb[Pore_id].volume * (Wi - Pb[Pore_id].C1_old) / dt;
+  } else if (i == 2) {
+    Return += Pb[Pore_id].volume * (Wi - Pb[Pore_id].C2_old) / dt;
+  }
   /* 流量项 */
   int ID2 = Tb_in[Pb[Pore_id].full_accum_ori - Pb[Pore_id].full_coord_ori].ID_2;
   for (int j = Pb[Pore_id].full_accum_ori - Pb[Pore_id].full_coord_ori; j < Pb[Pore_id].full_accum_ori; j++) {
@@ -2273,12 +2278,12 @@ void PNMsolver::kong_matrix() {
     Wjs = new reverse_mode<double>[Pb[i].full_coord];
 
     Pi = Pb[i].pressure + refer_pressure;
-    Wi = Pb[i].mole_frac_co2;
+    Wi = Pb[i].C1;
 
     for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)        // 找到pjs
     {
       Pjs[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].pressure + refer_pressure;
-      Wjs[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].mole_frac_co2;
+      Wjs[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].C1;
     }
 
     F = func_BULK_PHASE_FLOW_kong(Pi, Pjs, Wi, Wjs, i);
@@ -2332,12 +2337,12 @@ void PNMsolver::kong_matrix() {
     Wjs = new reverse_mode<double>[Pb[i].full_coord];
 
     Pi = Pb[i].pressure + refer_pressure;
-    Wi = Pb[i].mole_frac_co2;
+    Wi = Pb[i].C1;
 
     for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++)        // 找到pjs
     {
       Pjs[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].pressure + refer_pressure;
-      Wjs[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].mole_frac_co2;
+      Wjs[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].C1;
     }
 
     F = func_BULK_PHASE_FLOW_kong(Pi, Pjs, Wi, Wjs, i);
@@ -2413,8 +2418,8 @@ void PNMsolver::kong_matrix() {
       C2js[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].C2;
     }
 
-    F1 = func_TRANSPORT_FLOW_kong(P1i, P1js, C1i, C1js, i);
-    F2 = func_TRANSPORT_FLOW_kong(P2i, P2js, C2i, C2js, i);
+    F1 = func_TRANSPORT_FLOW_kong(P1i, P1js, C1i, C1js, 1, i);
+    F2 = func_TRANSPORT_FLOW_kong(P2i, P2js, C2i, C2js, 2, i);
     F1.diff(0, 1);
     F2.diff(0, 1);
 
@@ -2516,8 +2521,8 @@ void PNMsolver::kong_matrix() {
       C2js[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].C2;
     }
 
-    F1 = func_TRANSPORT_FLOW_kong(P1i, P1js, C1i, C1js, i);
-    F2 = func_TRANSPORT_FLOW_kong(P2i, P2js, C2i, C2js, i);
+    F1 = func_TRANSPORT_FLOW_kong(P1i, P1js, C1i, C1js, 1, i);
+    F2 = func_TRANSPORT_FLOW_kong(P2i, P2js, C2i, C2js, 2, i);
     F1.diff(0, 1);
     F2.diff(0, 1);
 
@@ -2676,10 +2681,9 @@ void PNMsolver::AMGX_solver_C_kong_PNM() {
   outfile << "inner loop = " << inter_n << "\t" << "machine_time = " << duration3.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
           << "dimensionless_time = " << time_all * ((area_main_Q().second + area_side_Q().second) / (2000 * voxel_size) / pow(sqrt(pi) / double(2) * 2200 * voxel_size, 2) / 0.2) << "\t"
           << "Q_main = " << area_main_Q().second * 60e6 << "\t" << "Q_side = " << area_side_Q().second * 60e6 << "\t" << "v_main = " << area_main_Q().first * 6e3 << "\t"
-          << "v_side = " << area_side_Q().first * 6e3 << "\t" << "dt = " << dt << "\t"
-          << "Peclet_MAIN = " << area_main_Q().second / (pow(sqrt(pi) / double(2) * 2200 * voxel_size, 2) * 0.2) / kong::D_dispersion_macro * 10e-6 << "\t"
-          << "Peclet_side = " << area_side_Q().second / (pow(sqrt(pi) / double(2) * 2200 * voxel_size, 2) * 0.2) / kong::D_dispersion_macro * 10e-6 << "\t"
-          << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t" << "average_outlet_c2 = " << average_outlet_concentration()[1] << endl;
+          << "v_side = " << area_side_Q().first * 6e3 << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6 << "\t"
+          << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t"
+          << "average_outlet_c2 = " << average_outlet_concentration()[1] << endl;
 
   output_co2_methane(time_step - 1);        // 初始状态
   // end AMGX initialization
@@ -2693,44 +2697,9 @@ void PNMsolver::AMGX_solver_C_kong_PNM() {
       Matrix_COO2CSR();
       AMGXsolver_subroutine_co2_mehane(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
       inter_n++;
-      cout << "Inf_norm = " << norm_inf << "\t\t" << "dt = " << dt << "\t\t" << "inner loop = " << inter_n << "\t\t" << "outer loop = " << time_step + 1 << endl;
+      cout << "Inf_norm = " << norm_inf << "\t" << "dt = " << dt << "\t\t" << "inner loop = " << inter_n << "\t\t" << "outer loop = " << time_step + 1 << endl;
       cout << endl;
-    } while (norm_inf > eps);
-
-    // for (int i = 0; i < inlet; i++) {
-    //   bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
-    //   for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
-    //     reverse_mode<double> Pi, Wi;
-    //     reverse_mode<double>* Pjs;
-    //     reverse_mode<double>* Wjs;
-    //     double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
-    //     double Aij = pi * pow(Tb[j].Radiu, 2);
-    //     if (exists) {
-    //       double vij = 1.29 * 0.01 / 60;                                       // m/s
-    //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-    //     } else {
-    //       double vij = 1.04 * 0.01 / 60;                                       // m/s
-    //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-    //     }
-    //   }
-    // }
-    // for (int i = macro_n; i < macro_n + m_inlet; i++) {
-    //   bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
-    //   for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
-    //     reverse_mode<double> Pi, Wi;
-    //     reverse_mode<double>* Pjs;
-    //     reverse_mode<double>* Wjs;
-    //     double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
-    //     double Aij = pi * pow(Tb[j].Radiu, 2);
-    //     if (exists) {
-    //       double vij = 1.29 * 0.01 / 60;                                       // m/s
-    //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-    //     } else {
-    //       double vij = 1.04 * 0.01 / 60;                                       // m/s
-    //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-    //     }
-    //   }
-    // }
+    } while (norm_inf > eps && (inter_n < 20 || (norm_inf > 1e-3 && norm_inf > 1e-5)));
 
     time_all += dt;
 
@@ -2744,14 +2713,50 @@ void PNMsolver::AMGX_solver_C_kong_PNM() {
             << "Peclet_side = " << area_side_Q().second / (pow(sqrt(pi) / double(2) * 2200 * voxel_size, 2) * 0.2) / kong::D_dispersion_macro * 10e-6 << "\t"
             << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t" << "average_outlet_c2 = " << average_outlet_concentration()[1] << endl;
 
-    // for (int i = 0; i < pn; i++) {
-    //   Pb[i].pressure_old = Pb[i].pressure;
-    //   Pb[i].mole_frac_co2_old = Pb[i].mole_frac_co2;
-    // }
+    for (int i = 0; i < inlet; i++) {
+      bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
+      for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
+        reverse_mode<double> Pi, Wi;
+        reverse_mode<double>* Pjs;
+        reverse_mode<double>* Wjs;
+        double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
+        double Aij = pi * pow(Tb[j].Radiu, 2);
+        if (exists) {
+          double vij = 1.29 * 0.01 / 60;                                       // m/s
+          Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+        } else {
+          double vij = 1.04 * 0.01 / 60;                                       // m/s
+          Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+        }
+      }
+    }
+    for (int i = macro_n; i < macro_n + m_inlet; i++) {
+      bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
+      for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
+        reverse_mode<double> Pi, Wi;
+        reverse_mode<double>* Pjs;
+        reverse_mode<double>* Wjs;
+        double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
+        double Aij = pi * pow(Tb[j].Radiu, 2);
+        if (exists) {
+          double vij = 1.29 * 0.01 / 60;                                       // m/s
+          Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+        } else {
+          double vij = 1.04 * 0.01 / 60;                                       // m/s
+          Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+        }
+      }
+    }
 
-    // if (inter_n < 10 && dt < 0.5) {
-    //   dt = dt * 2;
-    // }
+    for (int i = 0; i < pn; i++) {
+      Pb[i].pressure_old = Pb[i].pressure;
+      Pb[i].C1_old = Pb[i].C1;
+      Pb[i].C2_old = Pb[i].C2;
+    }
+
+    if (inter_n < 10 && dt < 0.5) {
+      dt = dt * 2;
+    }
 
     output_co2_methane(time_step);
 
@@ -3103,17 +3108,25 @@ void PNMsolver::memory() {
 void PNMsolver::initial_condition() {
   double start = omp_get_wtime();
   for (int i = 0; i < pn; i++) {
-    Pb[i].pressure = inlet_pre;        //- double(double(i) / double(pn) * 100)
+    Pb[i].pressure = outlet_pre;        //- double(double(i) / double(pn) * 100)
     Pb[i].pressure_old = Pb[i].pressure;
   }
-  for (int i = macro_n - outlet; i < macro_n; i++) {
-    Pb[i].pressure = outlet_pre;
-    Pb[i].pressure_old = outlet_pre;
-  }
-  for (int i = pn - m_outlet; i < pn; i++) {
-    Pb[i].pressure = outlet_pre;
-    Pb[i].pressure_old = outlet_pre;
-  }
+  // for (int i = macro_n - outlet; i < macro_n; i++) {
+  //   Pb[i].pressure = outlet_pre;
+  //   Pb[i].pressure_old = outlet_pre;
+  // }
+  // for (int i = pn - m_outlet; i < pn; i++) {
+  //   Pb[i].pressure = outlet_pre;
+  //   Pb[i].pressure_old = outlet_pre;
+  // }
+  // for (int i = 0; i < inlet; i++) {
+  //   Pb[i].pressure = inlet_pre;
+  //   Pb[i].pressure_old = inlet_pre;
+  // }
+  // for (int i = macro_n; i < macro_n + m_inlet; i++) {
+  //   Pb[i].pressure = inlet_pre;
+  //   Pb[i].pressure_old = inlet_pre;
+  // }
 
   for (int i = 0; i < pn; i++) {
     Pb[i].C1 = kong::outlet_C1;        //- double(double(i) / double(pn) * 100)
@@ -4499,28 +4512,70 @@ void PNMsolver::AMGXsolver_subroutine_co2_mehane(AMGX_matrix_handle& A_amgx, AMG
   AMGX_vector_set_zero(solution_amgx, n_amgx, 1);
   AMGX_solver_solve_with_0_initial_guess(solver, b_amgx, solution_amgx);
   AMGX_vector_download(solution_amgx, dX);
-
+  // ofstream debug("dX.txt");
   norm_inf = 0;
-  for (size_t i = 0; i < (op + mp) * 2; i++) {
+  for (size_t i = 0; i < (op + mp) * 3; i++) {
     norm_inf += dX[i] * dX[i];
+    // debug << "dX[" << i << "]" << dX[i] << endl;
   }
   norm_inf = sqrt(norm_inf);
+  cout << "norm_inf = " << norm_inf << endl;
 
   /*--------------------------x(t+dt) = x(t) + dx----------------------*/
   // 更新应力场 浓度场
+  // if (norm_inf > 1) {
+  //   leaning_rate = 1 / norm_inf;
+  // } else {
+  //   leaning_rate = 1;
+  // }
   for (int i = inlet; i < inlet + op; i++) {
-    Pb[i].pressure += dX[i - inlet];
-    Pb[i].C1 += dX[i - inlet + op + mp];
-    Pb[i].C2 += dX[i - inlet + (op + mp) * 2];
+    Pb[i].pressure += leaning_rate * dX[i - inlet];
+    Pb[i].C1 += leaning_rate * dX[i - inlet + op + mp];
+    Pb[i].C2 += leaning_rate * dX[i - inlet + (op + mp) * 2];
   }
   for (int i = op; i < op + mp; i++) {
-    Pb[i + inlet + outlet + m_inlet].pressure += dX[i];
-    Pb[i + inlet + outlet + m_inlet].C1 += dX[i + op + mp];
-    Pb[i + inlet + outlet + m_inlet].C2 += dX[i + (op + mp) * 2];
+    Pb[i + inlet + outlet + m_inlet].pressure += leaning_rate * dX[i];
+    Pb[i + inlet + outlet + m_inlet].C1 += leaning_rate * dX[i + op + mp];
+    Pb[i + inlet + outlet + m_inlet].C2 += leaning_rate * dX[i + (op + mp) * 2];
   }
   /*--------------------------x(t+dt) = x(t) + dx----------------------*/
 
   /*-----------------------------边界条件---------------------------------*/
+  for (int i = 0; i < inlet; i++) {
+    bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
+    for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
+      reverse_mode<double> Pi, Wi;
+      reverse_mode<double>* Pjs;
+      reverse_mode<double>* Wjs;
+      double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
+      double Aij = pi * pow(Tb[j].Radiu, 2);
+      if (exists) {
+        double vij = 1.29 * 0.01 / 60;                                       // m/s
+        Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+      } else {
+        double vij = 1.04 * 0.01 / 60;                                       // m/s
+        Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+      }
+    }
+  }
+  for (int i = macro_n; i < macro_n + m_inlet; i++) {
+    bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
+    for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
+      reverse_mode<double> Pi, Wi;
+      reverse_mode<double>* Pjs;
+      reverse_mode<double>* Wjs;
+      double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
+      double Aij = pi * pow(Tb[j].Radiu, 2);
+      if (exists) {
+        double vij = 1.29 * 0.01 / 60;                                       // m/s
+        Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+      } else {
+        double vij = 1.04 * 0.01 / 60;                                       // m/s
+        Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+      }
+    }
+  }
+
   // if (FLAG == 0) {
   //   for (int i = 0; i < inlet; i++) {
   //     // Pb[i].pressure += dX[Pb[Tb[Pb[i].full_accum - Pb[i].full_coord].ID_2]];
@@ -4531,40 +4586,40 @@ void PNMsolver::AMGXsolver_subroutine_co2_mehane(AMGX_matrix_handle& A_amgx, AMG
   //     // Pb[i].mole_frac_co2 = inlet_co2_mole_frac;
   //   }
   // } else {
-  //   for (int i = 0; i < inlet; i++) {
-  //     bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
-  //     for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
-  //       reverse_mode<double> Pi, Wi;
-  //       reverse_mode<double>* Pjs;
-  //       reverse_mode<double>* Wjs;
-  //       double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
-  //       double Aij = pi * pow(Tb[j].Radiu, 2);
-  //       if (exists) {
-  //         double vij = 1.29 * 0.01 / 60;                                       // m/s
-  //         Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-  //       } else {
-  //         double vij = 1.04 * 0.01 / 60;                                       // m/s
-  //         Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-  //       }
+  // for (int i = 0; i < inlet; i++) {
+  //   bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
+  //   for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
+  //     reverse_mode<double> Pi, Wi;
+  //     reverse_mode<double>* Pjs;
+  //     reverse_mode<double>* Wjs;
+  //     double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
+  //     double Aij = pi * pow(Tb[j].Radiu, 2);
+  //     if (exists) {
+  //       double vij = 1.29 * 0.01 / 60;                                       // m/s
+  //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+  //     } else {
+  //       double vij = 1.04 * 0.01 / 60;                                       // m/s
+  //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
   //     }
   //   }
-  //   for (int i = macro_n; i < macro_n + m_inlet; i++) {
-  //     bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
-  //     for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
-  //       reverse_mode<double> Pi, Wi;
-  //       reverse_mode<double>* Pjs;
-  //       reverse_mode<double>* Wjs;
-  //       double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
-  //       double Aij = pi * pow(Tb[j].Radiu, 2);
-  //       if (exists) {
-  //         double vij = 1.29 * 0.01 / 60;                                       // m/s
-  //         Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-  //       } else {
-  //         double vij = 1.04 * 0.01 / 60;                                       // m/s
-  //         Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-  //       }
+  // }
+  // for (int i = macro_n; i < macro_n + m_inlet; i++) {
+  //   bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
+  //   for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
+  //     reverse_mode<double> Pi, Wi;
+  //     reverse_mode<double>* Pjs;
+  //     reverse_mode<double>* Wjs;
+  //     double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
+  //     double Aij = pi * pow(Tb[j].Radiu, 2);
+  //     if (exists) {
+  //       double vij = 1.29 * 0.01 / 60;                                       // m/s
+  //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+  //     } else {
+  //       double vij = 1.04 * 0.01 / 60;                                       // m/s
+  //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
   //     }
   //   }
+  // }
   // }
 
   for (size_t i = inlet + op; i < inlet + op + outlet; i++) {
