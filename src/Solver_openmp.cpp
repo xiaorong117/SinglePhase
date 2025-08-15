@@ -13,12 +13,10 @@
 #include "Eigen/Eigen"
 #include "Eigen/IterativeLinearSolvers"
 
-
 #include <dirent.h>
 #include <sys/types.h>
 #include <unistd.h>        // 函数所在头文件
 #include <filesystem>
-
 
 // For gsl
 #include <gsl/gsl_errno.h>
@@ -7378,38 +7376,38 @@ void PNMsolver::AMGX_permeability_solver(double mode) {
   macro = macro_outlet_Q();
   micro_advec = micro_outlet_advec_Q();
 
-  /*贪婪最大路径*/
-  ofstream greedy("throat.txt");
-  for (size_t i = 0; i < Pb[pn - 1].full_accum; i++) {
-    greedy << i << "\t" << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length << " " << Tb[i].Radiu << endl;
-  }
-  greedy.close();
+  // /*贪婪最大路径*/
+  // ofstream greedy("throat.txt");
+  // for (size_t i = 0; i < Pb[pn - 1].full_accum; i++) {
+  //   greedy << i << "\t" << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length << " " << Tb[i].Radiu << endl;
+  // }
+  // greedy.close();
 
-  ofstream outfile1("inlet.txt");
-  ofstream outfile2("outlet.txt");
-  for (size_t i = 0; i < inlet; i++) {
-    outfile1 << i << endl;
-  }
+  // ofstream outfile1("inlet.txt");
+  // ofstream outfile2("outlet.txt");
+  // for (size_t i = 0; i < inlet; i++) {
+  //   outfile1 << i << endl;
+  // }
 
-  for (size_t i = macro_n; i < macro_n + m_inlet; i++) {
-    outfile1 << i << endl;
-  }
-  outfile1.close();
+  // for (size_t i = macro_n; i < macro_n + m_inlet; i++) {
+  //   outfile1 << i << endl;
+  // }
+  // outfile1.close();
 
-  for (size_t i = inlet + op; i < macro_n; i++) {
-    outfile2 << i << endl;
-  }
+  // for (size_t i = inlet + op; i < macro_n; i++) {
+  //   outfile2 << i << endl;
+  // }
 
-  for (size_t i = macro_n + m_inlet + mp; i < pn; i++) {
-    outfile2 << i << endl;
-  }
-  outfile2.close();
+  // for (size_t i = macro_n + m_inlet + mp; i < pn; i++) {
+  //   outfile2 << i << endl;
+  // }
+  // outfile2.close();
 
-  ofstream outfile3("pore.txt");
-  for (size_t i = 0; i < pn; i++) {
-    outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" << Pb[i].Radiu << endl;
-  }
-  outfile3.close();
+  // ofstream outfile3("pore.txt");
+  // for (size_t i = 0; i < pn; i++) {
+  //   outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" << Pb[i].Radiu << endl;
+  // }
+  // outfile3.close();
 
   double end = omp_get_wtime();
   outfile << "permeability = "
@@ -7483,45 +7481,44 @@ int main(int argc, char** argv) {
   }
   // Berea.mean_pore_size();
 
-  // PNMsolver Berea;
-  // switch (Mode) {
-  // case 1:
-  //   Berea.AMGXsolver();
-  //   break;
-  // case 2:
-  //   Berea.AMGX_permeability_solver(1);
-  //   break;
-  // case 3:
-  //   Berea.AMGX_permeability_solver();
-  //   break;
-  // case 4:
-  //   Berea.AMGX_solver_REV();
-  //   break;
-  // case 5:
-  //   Berea.AMGX_solver_apparent_permeability_REV();
-  //   break;
-  // case 6:
-  //   Berea.Eigen_solver_per(
-  //       1); // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
-  //   break;
-  // case 7:
-  //   Berea.Eigen_solver_per(); // 1 代表 本征渗透率 计算 没有参数代表
-  //                             // 表观渗透率计算
-  //   break;
-  // case 8:
-  //   Berea.AMGX_solver_intri_permeability_REV();
-  //   break;
-  // case 9:
-  //   Berea.Eigen_solver_intri_REV();
-  //   break;
-  // case 10:
-  //   Berea.conjugateGradient_solver_per(1);
-  //   break;
-  // case 11:
-  //   Berea.conjugateGradient_solver_per();
-  // default:
-  //   break;
-  // }
+  PNMsolver Berea;
+  switch (Mode) {
+    case 1:
+      Berea.AMGXsolver();
+      break;
+    case 2:
+      Berea.AMGX_permeability_solver(1);
+      break;
+    case 3:
+      Berea.AMGX_permeability_solver();
+      break;
+    case 4:
+      Berea.AMGX_solver_REV();
+      break;
+    case 5:
+      Berea.AMGX_solver_apparent_permeability_REV();
+      break;
+    case 6:
+      Berea.Eigen_solver_per(1);        // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
+      break;
+    case 7:
+      Berea.Eigen_solver_per();        // 1 代表 本征渗透率 计算 没有参数代表
+                                       // 表观渗透率计算
+      break;
+    case 8:
+      Berea.AMGX_solver_intri_permeability_REV();
+      break;
+    case 9:
+      Berea.Eigen_solver_intri_REV();
+      break;
+    case 10:
+      Berea.conjugateGradient_solver_per(1);
+      break;
+    case 11:
+      Berea.conjugateGradient_solver_per();
+    default:
+      break;
+  }
   PNMsolver* obj = new PNMsolver();        // 动态分配
   for (int i = 0; i < 50; i++) {
     obj->AMGX_permeability_solver();

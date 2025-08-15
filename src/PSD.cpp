@@ -2,7 +2,7 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
-#include <equation_solve.cpp> // 假设这个头文件包含了方程求解的相关函数
+#include <equation_solve.cpp>        // 假设这个头文件包含了方程求解的相关函数
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -10,29 +10,25 @@
 #include <string>
 #include <vector>
 class GasAdsorptionData {
-private:
+ private:
   std::vector<double> w_values;
   std::vector<double> dvdw_values;
   std::vector<double> log_w_values;
-  double Average_pressure = 1e6; // 平均压力
-  double Average_compre = 1;     // 平均压缩系数
-  double Average_visco = 1.4e-5; // 平均粘度
-  double refer_pressure = 1e6;   // 参考压力
-  double Temperature = 400;      // 温度，单位为K
-  double phi = 0.135;            // 孔隙度
-  double tao = 1.5;              // 迂曲度
-  double mean_free_path = 1e-9;  // 平均自由程
+  double Average_pressure = 1e6;        // 平均压力
+  double Average_compre = 1;            // 平均压缩系数
+  double Average_visco = 1.4e-5;        // 平均粘度
+  double refer_pressure = 1e6;          // 参考压力
+  double Temperature = 400;             // 温度，单位为K
+  double phi = 0.135;                   // 孔隙度
+  double tao = 1.5;                     // 迂曲度
+  double mean_free_path = 1e-9;         // 平均自由程
   int Flag_intrin = true;
 
   // 线性插值函数
-  double linearInterpolate(double x, double x0, double x1, double y0,
-                           double y1) const {
-    return y0 + (x - x0) * (y1 - y0) / (x1 - x0);
-  }
+  double linearInterpolate(double x, double x0, double x1, double y0, double y1) const { return y0 + (x - x0) * (y1 - y0) / (x1 - x0); }
 
   // 生成GNUPLOT脚本并绘图
-  void plotData(const std::vector<double> &x, const std::vector<double> &y,
-                const std::string &title) const {
+  void plotData(const std::vector<double>& x, const std::vector<double>& y, const std::string& title) const {
     // 创建数据文件
     std::ofstream datafile("plot_data.dat");
     for (size_t i = 0; i < x.size(); ++i) {
@@ -48,8 +44,7 @@ private:
     scriptfile << "set xlabel 'w'\n";
     scriptfile << "set ylabel 'dv/dw'\n";
     scriptfile << "set grid\n";
-    scriptfile
-        << "plot 'plot_data.dat' using 1:2 with lines lw 2 title 'Original'\n";
+    scriptfile << "plot 'plot_data.dat' using 1:2 with lines lw 2 title 'Original'\n";
     scriptfile << "set output\n";
     scriptfile.close();
 
@@ -59,9 +54,9 @@ private:
     std::cout << "图形已保存为 " << title << ".png\n";
   }
 
-public:
+ public:
   // 构造函数，从文件读取数据
-  GasAdsorptionData(const std::string &filename) {
+  GasAdsorptionData(const std::string& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
       throw std::runtime_error("无法打开文件: " + filename);
@@ -76,11 +71,11 @@ public:
       std::istringstream iss(line);
       double w, dvdw;
       if (iss >> w >> dvdw) {
-        w_values.push_back(w * 1e-9); // 将w转换为微米
+        w_values.push_back(w * 1e-9);        // 将w转换为微米
         log_w_values.push_back(std::log10(w));
         // 检查dvdw是否为NaN或无穷大
         if (std::isnan(dvdw) || std::isinf(dvdw)) {
-          dvdw = 0.0; // 将无效值设为0
+          dvdw = 0.0;        // 将无效值设为0
         }
         dvdw_values.push_back(dvdw);
       }
@@ -97,9 +92,7 @@ public:
       for (size_t i = 0; i < indices.size(); ++i)
         indices[i] = i;
 
-      std::sort(indices.begin(), indices.end(), [this](size_t i1, size_t i2) {
-        return w_values[i1] < w_values[i2];
-      });
+      std::sort(indices.begin(), indices.end(), [this](size_t i1, size_t i2) { return w_values[i1] < w_values[i2]; });
 
       // 重新排列数据
       std::vector<double> sorted_w, sorted_dvdw;
@@ -114,9 +107,7 @@ public:
   }
 
   // 修改Average_pressure，Average_compre和Temperature的值
-  void setParameters(double pressure, double compre, double temp, double visco,
-                     double phi_value, double tao_value,
-                     double refer_pressure_value, bool Flag_inrtin_l) {
+  void setParameters(double pressure, double compre, double temp, double visco, double phi_value, double tao_value, double refer_pressure_value, bool Flag_inrtin_l) {
     Average_pressure = pressure;
     Average_compre = compre;
     Temperature = temp;
@@ -127,26 +118,18 @@ public:
     Flag_intrin = Flag_inrtin_l;
   }
 
-  double knusen(double Average_visco, double Average_pressure,
-                double Average_compre, double Temperature, double w) const {
+  double knusen(double Average_visco, double Average_pressure, double Average_compre, double Temperature, double w) const {
     // 计算平均自由程
-    double Kn =
-        Average_visco / Average_pressure *
-        sqrt(3.14 * Average_compre * 8.314 * Temperature / (2 * 0.016)) / w;
+    double Kn = Average_visco / Average_pressure * sqrt(3.14 * Average_compre * 8.314 * Temperature / (2 * 0.016)) / w;
     return Kn;
   }
 
-  void mean_free() {
-    mean_free_path =
-        Average_visco / Average_pressure *
-        sqrt(3.14 * Average_compre * 8.314 * Temperature / (2 * 0.016));
-  }
+  void mean_free() { mean_free_path = Average_visco / Average_pressure * sqrt(3.14 * Average_compre * 8.314 * Temperature / (2 * 0.016)); }
 
   double Function_Slip(double knusen) const {
     double alpha_om = 1.358 * 2 / 3.14 * atan(4 * pow(knusen, 0.4));
     double beta_om = 4;
-    double Slip_om =
-        (1 + alpha_om * knusen) * (1 + beta_om * knusen / (1 + knusen));
+    double Slip_om = (1 + alpha_om * knusen) * (1 + beta_om * knusen / (1 + knusen));
     return Slip_om;
   }
 
@@ -171,10 +154,8 @@ public:
 
     // 处理第一个不完整的区间
     if ((w1 > w_values[idx1 - 1]) && (idx1 > 0)) {
-      double kn1 = knusen(Average_visco, Average_pressure, Average_compre,
-                          Temperature, w1);
-      double kn2 = knusen(Average_visco, Average_pressure, Average_compre,
-                          Temperature, w_values[idx1]);
+      double kn1 = knusen(Average_visco, Average_pressure, Average_compre, Temperature, w1);
+      double kn2 = knusen(Average_visco, Average_pressure, Average_compre, Temperature, w_values[idx1]);
       double Slip_w1 = Function_Slip(kn1);
       double Slip_w2 = Function_Slip(kn2);
       double y1 = get_dvdw(w1) * w1 * w1 * Slip_w1;
@@ -186,10 +167,8 @@ public:
     for (size_t i = idx1; i < idx2; ++i) {
       double w_1 = w_values[i];
       double w_2 = w_values[i + 1];
-      double kn1 = knusen(Average_visco, Average_pressure, Average_compre,
-                          Temperature, w_1);
-      double kn2 = knusen(Average_visco, Average_pressure, Average_compre,
-                          Temperature, w_2);
+      double kn1 = knusen(Average_visco, Average_pressure, Average_compre, Temperature, w_1);
+      double kn2 = knusen(Average_visco, Average_pressure, Average_compre, Temperature, w_2);
       double Slip_w1 = Function_Slip(kn1);
       double Slip_w2 = Function_Slip(kn2);
       double y1 = dvdw_values[i] * w_1 * w_1 * Slip_w1;
@@ -199,10 +178,8 @@ public:
 
     // 处理最后一个不完整的区间
     if (w2 < w_values[idx2]) {
-      double kn1 = knusen(Average_visco, Average_pressure, Average_compre,
-                          Temperature, w2);
-      double kn2 = knusen(Average_visco, Average_pressure, Average_compre,
-                          Temperature, w_values[idx2]);
+      double kn1 = knusen(Average_visco, Average_pressure, Average_compre, Temperature, w2);
+      double kn2 = knusen(Average_visco, Average_pressure, Average_compre, Temperature, w_values[idx2]);
       double Slip_w1 = Function_Slip(kn1);
       double Slip_w2 = Function_Slip(kn2);
       double y1 = get_dvdw(w2) * w2 * w2 * Slip_w1;
@@ -305,7 +282,7 @@ public:
   double calculatePermeability(double w1, double w2) const {
     double integral = integrate(w1, w2);
     double V = integrate2(w1, w2);
-    double K = integral / V / 32.0 * phi / tao; // 假设常数为32.0
+    double K = integral / V / 32.0 * phi / tao;        // 假设常数为32.0
     return K;
   }
 
@@ -313,7 +290,7 @@ public:
   double calculatePermeability_intrin(double w1, double w2) const {
     double integral = integrate_intrin(w1, w2);
     double V = integrate2(w1, w2);
-    double K = integral / V / 32.0 * phi / tao; // 假设常数为32.0
+    double K = integral / V / 32.0 * phi / tao;        // 假设常数为32.0
     return K;
   }
   // 计算每个microporosity的平均表观孔径
@@ -334,18 +311,16 @@ public:
     equation_solve solver(mean_free_path);
     double W_bar = calculate_mean_poresize(w1, w2);
     double integral = solver.f(W_bar);
-    double K =
-        integral * calculatePermeability_intrin(w1, w2); // 假设常数为32.0
+    double K = integral * calculatePermeability_intrin(w1, w2);        // 假设常数为32.0
     std::array<double, 2> arr = {K, W_bar};
     return arr;
   };
   // 计算每个microporosity的平均本征渗透率和平均孔径
-  std::array<double, 2> calculate_Permeability_aver_intri(double w1,
-                                                          double w2) {
+  std::array<double, 2> calculate_Permeability_aver_intri(double w1, double w2) {
     equation_solve solver(mean_free_path);
     double W_bar = calculate_mean_poresize_intrin(w1, w2);
     double integral = pow(W_bar, 2);
-    double K = integral / 32.0 * phi / tao; // 假设常数为32.0
+    double K = integral / 32.0 * phi / tao;        // 假设常数为32.0
     std::array<double, 2> arr = {K, W_bar};
     return arr;
   };
@@ -382,8 +357,8 @@ public:
 
     // std::array<double,2>arr = {K_apparent_w, K_apparent};
     if (Flag_intrin == true) {
-      // return calculatePermeability_intrin(min_w(), w2); // 使用本征渗透率计算
-      double W = 5.22e-9; //
+      // return calculatePermeability_intrin(min_w(), w2);        // 使用本征渗透率计算
+      double W = 6.3e-9;        //
       return pow(W, 2) * 0.134 / 1.5 / 32;
     } else {
       return K_apparent(w2);
@@ -396,40 +371,38 @@ public:
     double ko = 0;
     if (w2 <= 5e-9) {
       int index = int(refer_pressure / 1e6) - 1;
-      W = 2.32e-9; // 2 nm
-      ko = 11E-21; // 2 nm
+      W = 2.32e-9;        // 2 nm
+      ko = 11E-21;        // 2 nm
     } else if (5E-9 < w2 && w2 <= 9e-9) {
       int index = int(refer_pressure / 1e6) - 1;
-      W = 4.86e-9; // 2 nm
+      W = 4.86e-9;        // 2 nm
       ko = 45E-21;
     } else if (9E-9 < w2 && w2 <= 17e-9) {
       int index = int(refer_pressure / 1e6) - 1;
-      W = 9.42E-9; // 2 nm
+      W = 9.42E-9;        // 2 nm
       ko = 161E-21;
     } else if (17E-9 < w2 && w2 <= 33e-9) {
       int index = int(refer_pressure / 1e6) - 1;
-      W = 17.88E-9; // 2 nm
+      W = 17.88E-9;        // 2 nm
       ko = 515E-21;
     } else if (33E-9 < w2 && w2 <= 65e-9) {
-      W = 36.8E-9; // 2 nm
+      W = 36.8E-9;        // 2 nm
       ko = 2293.81E-21;
     } else if (34E-9 < w2 && w2 <= 130e-9) {
-      W = 50E-9; // 2 nm
+      W = 50E-9;        // 2 nm
       ko = 3904.12E-21;
     }
 
-    W = 4.8e-9;
-    ko = pow(5.22e-9, 2) * 0.134 / 1.5 / 32;
+    W = 8e-9;
+    ko = pow(5.23e-9, 2) * 0.134 / 1.5 / 32;
     double pre = Average_pressure;
     double z = Average_compre;
-    double rho_g = pre * 0.016 / (z * 8.314 * Temperature); // kg/m3
-    double viscos = Average_visco;                          // pa.s
-    double Knusen_number =
-        viscos / pre * sqrt(M_PI * z * 8.314 * Temperature / (2 * 0.016)) / (W);
+    double rho_g = pre * 0.016 / (z * 8.314 * Temperature);        // kg/m3
+    double viscos = Average_visco;                                 // pa.s
+    double Knusen_number = viscos / pre * sqrt(M_PI * z * 8.314 * Temperature / (2 * 0.016)) / (W);
     double alpha = 1.358 * 2 / M_PI * atan(4 * pow(Knusen_number, 0.4));
     double beta = 4;
-    double Slip = (1 + alpha * Knusen_number) *
-                  (1 + beta * Knusen_number / (1 + Knusen_number));
+    double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
     double K_apparent_w = Slip * ko;
     return K_apparent_w;
   }
@@ -446,8 +419,7 @@ public:
     size_t idx = std::distance(w_values.begin(), it);
 
     // 线性插值
-    return linearInterpolate(w, w_values[idx - 1], w_values[idx],
-                             dvdw_values[idx - 1], dvdw_values[idx]);
+    return linearInterpolate(w, w_values[idx - 1], w_values[idx], dvdw_values[idx - 1], dvdw_values[idx]);
   }
   // 获取数据点数量
   size_t size() const { return w_values.size(); }
@@ -459,9 +431,7 @@ public:
   double max_w() const { return w_values.back(); }
 
   // 绘制原始数据曲线
-  void plotOriginalData() const {
-    plotData(log_w_values, dvdw_values, "Original_dVdW_Data");
-  }
+  void plotOriginalData() const { plotData(log_w_values, dvdw_values, "Original_dVdW_Data"); }
 };
 
 // int main() {

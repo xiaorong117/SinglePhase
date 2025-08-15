@@ -117,5 +117,12 @@
         "stdfloat": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabledIfIncludesResolve",
-    "C_Cpp.dimInactiveRegions": false
+    "C_Cpp.dimInactiveRegions": false,
+    "python-envs.pythonProjects": [
+        {
+            "path": "d2l-zh-pytorch-slides",
+            "envManager": "ms-python.python:venv",
+            "packageManager": "ms-python.python:pip"
+        }
+    ]
 }
