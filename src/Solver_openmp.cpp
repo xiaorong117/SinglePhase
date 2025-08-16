@@ -2765,8 +2765,9 @@ void PNMsolver::Paramentinput() {
             // Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >>
             // Pb[i].REV_porosity1 >> Pb[i].radius_micro >> Pb[i].REV_k; // REV
             porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum;        // REV
-                                                                                                                                   // Pb[i].REV_porosity2 = Pb[i].REV_porosity1;
-                                                                                                                                   // Pb[i].REV_micro_porosity = 0.1;
+            Pb[i].REV_k = ko;
+            // Pb[i].REV_porosity2 = Pb[i].REV_porosity1;
+            // Pb[i].REV_micro_porosity = 0.1;
           }
         }
       }

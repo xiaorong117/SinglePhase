@@ -2469,9 +2469,9 @@ void PNMsolver::kong_matrix() {
     B[i] = 0;
   }
 
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(int(OMP_PARA))
-  // #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
   for (int i = inlet; i < op + inlet; i++) {
     reverse_mode<double> Pi, Wi, F;
     reverse_mode<double>*Pjs, *Wjs;
@@ -2528,9 +2528,9 @@ void PNMsolver::kong_matrix() {
   /* -------------------------------------------------------------------------------------
  */
   // micropore
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(int(OMP_PARA))
-  // #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
   for (int i = macro_n + m_inlet; i < pn - m_outlet; i++) {
     reverse_mode<double> Pi, Wi, F;
     reverse_mode<double>*Pjs, *Wjs;
@@ -2582,20 +2582,20 @@ void PNMsolver::kong_matrix() {
     delete[] Wjs;
   }
 
-  /* -------------------------------------------------------------------------------------
+/* -------------------------------------------------------------------------------------
    */
-  /* TRANSPORT EQUATION SOLEVR */
-  /* -------------------------------------------------------------------------------------
+/* TRANSPORT EQUATION SOLEVR */
+/* -------------------------------------------------------------------------------------
    */
 
-  /* -------------------------------------------------------------------------------------
+/* -------------------------------------------------------------------------------------
    */
-  /* 大孔组装 */
-  /* -------------------------------------------------------------------------------------
+/* 大孔组装 */
+/* -------------------------------------------------------------------------------------
    */
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(int(OMP_PARA))
-  // #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
   for (int i = inlet; i < op + inlet; i++) {
     int id = omp_get_thread_num();
     reverse_mode<double> P1i, P2i, C1i, C2i, F1, F2;
@@ -2697,15 +2697,15 @@ void PNMsolver::kong_matrix() {
     delete[] C2js;
   }
 
-  /* -------------------------------------------------------------------------------------
+/* -------------------------------------------------------------------------------------
  */
-  /* 微孔组装 */
-  /* -------------------------------------------------------------------------------------
+/* 微孔组装 */
+/* -------------------------------------------------------------------------------------
  */
-  // micropore
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(int(OMP_PARA))
-  // #endif
+// micropore
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
   for (int i = macro_n + m_inlet; i < pn - m_outlet; i++) {
     reverse_mode<double> P1i, P2i, C1i, C2i, F1, F2;
     reverse_mode<double>*P1js, *P2js, *C1js, *C2js;
@@ -3786,7 +3786,7 @@ void PNMsolver::Paramentinput() {
           Pb[i].km = ko;
         }
       } else {
-        ofstream inlet_coo("inlet_coo.txt");
+        // ofstream inlet_coo("inlet_coo.txt");
         for (int i = 0; i < pn; i++) {
           double waste{0};
           porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum;        // REV
@@ -3804,14 +3804,14 @@ void PNMsolver::Paramentinput() {
           //   inlet_coo << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << i << "\t" << Pb[i].Radiu << "\t" << Pb[i].type << endl;
           // }
 
-          if (i < inlet) {
-            inlet_coo << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << i << "\t" << Pb[i].Radiu << "\t" << Pb[i].type << endl;
-          } else if (i < macro_n + m_inlet && i >= macro_n) {
-            inlet_coo << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << i << "\t" << Pb[i].Radiu << "\t" << Pb[i].type << endl;
-          }
+          // if (i < inlet) {
+          //   inlet_coo << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << i << "\t" << Pb[i].Radiu << "\t" << Pb[i].type << endl;
+          // } else if (i < macro_n + m_inlet && i >= macro_n) {
+          //   inlet_coo << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << i << "\t" << Pb[i].Radiu << "\t" << Pb[i].type << endl;
+          // }
         }
         porefile.close();
-        inlet_coo.close();
+        // inlet_coo.close();
 
         // int count = 1259;
         // string filename{"filtered_inlet_coo"};
@@ -4737,9 +4737,9 @@ void PNMsolver::para_cal_kong() {
       }
     }
   }
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(int(OMP_PARA))
-  // #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
   for (int i = macro_n + m_inlet; i < pn - m_outlet; i++) {
     int counter{0};
     for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++) {
@@ -5533,7 +5533,7 @@ int main(int argc, char** argv) {
 
   PNMsolver Solver;
   // Solver.AMGX_solver_CO2_methane();
-  // Solver.AMGX_solver_C_kong_PNM();
+  Solver.AMGX_solver_C_kong_PNM();
   // Solver.AMGX_flux_boundary();
-  Solver.EIGEN_flux_boundary();
+  // Solver.EIGEN_flux_boundary();
 }
