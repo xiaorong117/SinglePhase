@@ -1284,6 +1284,7 @@ void PNMsolver::Para_cal_REV(double) {
   cout << "total_clay_HP = " << total_clay_HP << endl;
   cout << "total_clay_LP = " << total_clay_LP << endl;
   cout << "total_fracture = " << total_fracture << endl;
+  cout << "total_macro = " << total_macropores << endl;
   cout << "total_OM_HP_free = " << total_OM_HP_free << endl;
   cout << "total_OM_HP_ad = " << total_OM_HP_ad << endl;
   cout << "total_OM_LP_free = " << total_OM_LP_free << endl;
@@ -7204,38 +7205,38 @@ void PNMsolver::AMGX_solver_intri_permeability_REV() {
   AMGX_solver_subroutine_per(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
 
   /*贪婪最大路径*/
-  ofstream greedy("throat.txt");
-  for (size_t i = 0; i < Pb[pn - 1].full_accum; i++) {
-    greedy << i << "\t" << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length << " " << Tb[i].Radiu << endl;
-    // greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " <<
-  }
-  greedy.close();
+  // ofstream greedy("throat.txt");
+  // for (size_t i = 0; i < Pb[pn - 1].full_accum; i++) {
+  //   greedy << i << "\t" << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " << Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << " " << Tb[i].Length << " " << Tb[i].Radiu << endl;
+  //   // greedy << Tb[i].ID_1 << " " << Tb[i].ID_2 << " " <<
+  // }
+  // greedy.close();
 
-  ofstream outfile1("inlet.txt");
-  ofstream outfile2("outlet.txt");
-  for (size_t i = 0; i < inlet; i++) {
-    outfile1 << i << endl;
-  }
+  // ofstream outfile1("inlet.txt");
+  // ofstream outfile2("outlet.txt");
+  // for (size_t i = 0; i < inlet; i++) {
+  //   outfile1 << i << endl;
+  // }
 
-  for (size_t i = macro_n; i < macro_n + m_inlet; i++) {
-    outfile1 << i << endl;
-  }
-  outfile1.close();
+  // for (size_t i = macro_n; i < macro_n + m_inlet; i++) {
+  //   outfile1 << i << endl;
+  // }
+  // outfile1.close();
 
-  for (size_t i = inlet + op; i < macro_n; i++) {
-    outfile2 << i << endl;
-  }
+  // for (size_t i = inlet + op; i < macro_n; i++) {
+  //   outfile2 << i << endl;
+  // }
 
-  for (size_t i = macro_n + m_inlet + mp; i < pn; i++) {
-    outfile2 << i << endl;
-  }
-  outfile2.close();
+  // for (size_t i = macro_n + m_inlet + mp; i < pn; i++) {
+  //   outfile2 << i << endl;
+  // }
+  // outfile2.close();
 
-  ofstream outfile3("pore.txt");
-  for (size_t i = 0; i < pn; i++) {
-    outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" << Pb[i].Radiu << endl;
-  }
-  outfile3.close();
+  // ofstream outfile3("pore.txt");
+  // for (size_t i = 0; i < pn; i++) {
+  //   outfile3 << i << "\t" << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << Pb[i].pressure - outlet_pre << "\t" << Pb[i].type << "\t" << Pb[i].Radiu << endl;
+  // }
+  // outfile3.close();
 
   macro = macro_outlet_Q();
   micro_advec = micro_outlet_advec_Q();
@@ -7519,15 +7520,15 @@ int main(int argc, char** argv) {
     default:
       break;
   }
-  PNMsolver* obj = new PNMsolver();        // 动态分配
-  for (int i = 0; i < 50; i++) {
-    obj->AMGX_permeability_solver();
-    delete obj;                   // 手动销毁
-    obj = nullptr;                // 避免悬空指针，可选但推荐
-    obj = new PNMsolver();        // 重新分配内存
-    iii += 1;
-    icount = 0;        // 重置迭代计数器
-  }
+  // PNMsolver* obj = new PNMsolver();        // 动态分配
+  // for (int i = 0; i < 50; i++) {
+  //   obj->AMGX_permeability_solver();
+  //   delete obj;                   // 手动销毁
+  //   obj = nullptr;                // 避免悬空指针，可选但推荐
+  //   obj = new PNMsolver();        // 重新分配内存
+  //   iii += 1;
+  //   icount = 0;        // 重置迭代计数器
+  // }
   /*产气模拟*/
   // Berea.Eigen_solver();
   // Berea.AMGXsolver();

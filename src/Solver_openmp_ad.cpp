@@ -54,7 +54,7 @@ using namespace fadbad;
 template <typename T>
 using reverse_mode = B<T>;
 static int FLAG = 0;
-int number_inlet = 44;
+int number_inlet = 428;
 int number_outlet = 1;
 std::vector<int> inlet_boundary(number_inlet);
 // 输出vector到文件
@@ -135,7 +135,7 @@ double viscosity = 2e-5;
 
 namespace Porous_media_property_Hybrid {
 double porosity = 0.1;        // 孔隙率
-double ko = 1e-15;            // 微孔达西渗透率 m^2
+double ko = 100e-15;          // 微孔达西渗透率 m^2
 double micro_radius{3.48e-9};
 }        // namespace Porous_media_property_Hybrid
 
@@ -183,7 +183,7 @@ double refer_pressure{0};
 
 namespace Solver_property {
 double voxel_size = 2e-6;        // 像素尺寸，单位m    5.345e-6 8e-9
-double domain_size_cubic = 2 * 2200 / sqrt(My_const::pi);
+double domain_size_cubic = 2000;
 int Time_step{0};
 int percentage_production_counter{1};
 double pyhsic_time{0};
@@ -1585,6 +1585,16 @@ reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double>& 
 reverse_mode<double> PNMsolver::conductivity_bulk_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id, int throat_id) {
   int i = throat_id;
 
+  Pb[Tb_in[i].ID_1].compre = compre(Pb[Tb_in[i].ID_1].pressure + refer_pressure);
+  Pb[Tb_in[i].ID_1].compre_old = Pb[Tb_in[i].ID_1].compre;
+  Pb[Tb_in[i].ID_1].visco = visco(Pb[Tb_in[i].ID_1].pressure + refer_pressure, Pb[Tb_in[i].ID_1].compre, Temperature);
+  Pb[Tb_in[i].ID_1].visco_old = Pb[Tb_in[i].ID_1].visco;
+
+  Pb[Tb_in[i].ID_2].compre = compre(Pb[Tb_in[i].ID_2].pressure + refer_pressure);
+  Pb[Tb_in[i].ID_2].compre_old = Pb[Tb_in[i].ID_2].compre;
+  Pb[Tb_in[i].ID_2].visco = visco(Pb[Tb_in[i].ID_2].pressure + refer_pressure, Pb[Tb_in[i].ID_2].compre, Temperature);
+  Pb[Tb_in[i].ID_2].visco_old = Pb[Tb_in[i].ID_2].visco;
+
   // 水力传导系数计算
   double temp1 = 0, temp2 = 0, temp3 = 0,
          temp4 = 0;        // 两点流量计算中的临时存储变量
@@ -1603,6 +1613,7 @@ reverse_mode<double> PNMsolver::conductivity_bulk_kong(reverse_mode<double>& Pi,
 
   Rho_ID1 = 0.016 * (Pb[Tb_in[i].ID_1].pressure + refer_pressure) / (Pb[Tb_in[i].ID_1].compre * 8.314 * Temperature);
   Rho_ID2 = 0.016 * (Pb[Tb_in[i].ID_2].pressure + refer_pressure) / (Pb[Tb_in[i].ID_2].compre * 8.314 * Temperature);
+
   if (Pb[Tb_in[i].ID_1].type == 0)        // clay_HP
   {
     Apparent_K_ID1 = Pb[Tb_in[i].ID_1].km;
@@ -1649,6 +1660,7 @@ reverse_mode<double> PNMsolver::conductivity_bulk_kong(reverse_mode<double>& Pi,
   /*debug*/
   // Pb[Tb_in[i].ID_1].visco = gas_vis;
   // Pb[Tb_in[i].ID_2].visco = gas_vis;
+
   if (Pb[Tb_in[i].ID_1].type == 2 && Pb[Tb_in[i].ID_2].type == 2) {
     temp1 = Apparent_K_ID1 * pi * pow(Pb[Tb_in[i].ID_1].Radiu, 2) / (Pb[Tb_in[i].ID_1].visco * Pb[Tb_in[i].ID_1].Radiu);
     temp2 = pi * pow(Tb_in[i].Radiu, 4) / (8 * (Pb[Tb_in[i].ID_1].visco + Pb[Tb_in[i].ID_2].visco) / 2 * Tb_in[i].Length);
@@ -2421,10 +2433,11 @@ void PNMsolver::intrinsic_permeability_matrix() {
 
   // /*Tb debug*/
   // ofstream Tb_out("Tb_out.txt");
-  // Tb_out << "id" << "\t" << "ID1" << "\t" << "ID2" << "\t" << "pressure_ID1" << "\t" << "pressure_ID2" << "\t" << "conductivity" << "\t" << "flux" << "\t" << "B" << endl;
+  // // Tb_out << "id" << "\t" << "ID1" << "\t" << "ID2" << "\t" << "pressure_ID1" << "\t" << "pressure_ID2" << "\t" << "conductivity" << "\t" << "flux" << "\t" << "B" << endl;
   // for (int i = 0; i < 2 * tn; i++) {
-  //   Tb_out << "Tb[" << i << "] =" << "\t" << Tb[i].ID_1 << "\t" << Tb[i].ID_2 << "\t" << Pb[Tb[i].ID_1].pressure << "\t" << Pb[Tb[i].ID_1].pressure << "\t" << Tb[i].Conductivity << "\t"
-  //          << -Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << "\t" << Tb[i].Conductivity * Pb[Tb[i].ID_2].pressure << endl;
+  //   // Tb_out << "Tb[" << i << "] =" << "\t" << Tb[i].ID_1 << "\t" << Tb[i].ID_2 << "\t" << Pb[Tb[i].ID_1].pressure << "\t" << Pb[Tb[i].ID_1].pressure << "\t" << Tb[i].Conductivity << "\t"
+  //   //        << -Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << "\t" << Tb[i].Conductivity * Pb[Tb[i].ID_2].pressure << endl;
+  //   Tb_out << Tb[i].ID_1 << "\t" << Tb[i].ID_2 << "\t" << Tb[i].Conductivity << endl;
   // }
   // Tb_out.close();
 }
@@ -2866,7 +2879,7 @@ void PNMsolver::EIGEN_flux_boundary() {
           << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t";
   outfile << "permeability = "
           << (area_main_Q().second + area_side_Q().second) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * 2000 * voxel_size /
-                 (pow(sqrt(pi) / double(2) * 2000 * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-15
+                 (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-15
           << " mD" << endl;
 }
 
@@ -3014,25 +3027,25 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_) {
 
   cudaMemcpy(x, d_x, N * sizeof(double), cudaMemcpyDeviceToHost);
 
-  ofstream debug("dX.txt");
-  debug << std::scientific << std::setprecision(10);
+  // ofstream debug("dX.txt");
+  // debug << std::scientific << std::setprecision(10);
   norm_inf = 0;
   for (size_t i = 0; i < (op + mp); i++) {
     norm_inf += x[i] * x[i];
-    debug << "dX[" << i << "] = " << x[i] << endl;
+    // debug << "dX[" << i << "] = " << x[i] << endl;
   }
-  debug.close();
+  // debug.close();
   norm_inf = sqrt(norm_inf);
   cout << "norm_inf = " << norm_inf << endl;
 
   /*--------------------------x(t+dt) = x(t) + dx----------------------*/
-  ofstream P("pressure.txt");
-  P << std::scientific << std::setprecision(10);
-  norm_inf = 0;
-  for (int i = 0; i < pn; i++) {
-    P << Pb[i].pressure << endl;
-  }
-  P.close();
+  // ofstream P("pressure.txt");
+  // P << std::scientific << std::setprecision(10);
+  // norm_inf = 0;
+  // for (int i = 0; i < pn; i++) {
+  //   P << Pb[i].pressure << endl;
+  // }
+  // P.close();
   // 更新应力场 浓度场
   for (int i = inlet; i < inlet + op; i++) {
     Pb[i].pressure = x[i - inlet];
@@ -3045,64 +3058,64 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_) {
     // Pb[i + inlet + outlet + m_inlet].C2 += dX[i + (op + mp) * 2];
   }
 
-  for (int i = 0; i < inlet; i++) {
-    bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
-    for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
-      reverse_mode<double> Pi, Wi;
-      reverse_mode<double>* Pjs;
-      reverse_mode<double>* Wjs;
-      double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
-      double Aij = pi * pow(Tb[j].Radiu, 2);
-      if (exists) {
-        double vij = 1.29 * 0.01 / 60;                                       // m/s
-        Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-        Pb[i].pressure_old = Pb[i].pressure;
-        if (Pb[i].pressure < 0) {
-          cout << "!!!" << endl;
-        };
-      } else {
-        double vij = 1.04 * 0.01 / 60;                                       // m/s
-        Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-        Pb[i].pressure_old = Pb[i].pressure;
-        if (Pb[i].pressure < 0) {
-          cout << "!!!" << endl;
-        };
-      }
-    }
-  }
-  for (int i = macro_n; i < macro_n + m_inlet; i++) {
-    bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
-    for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
-      reverse_mode<double> Pi, Wi;
-      reverse_mode<double>* Pjs;
-      reverse_mode<double>* Wjs;
-      double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
-      double Aij = pi * pow(Tb[j].Radiu, 2);
-      if (exists) {
-        double vij = 1.29 * 0.01 / 60;                                       // m/s
-        Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-        Pb[i].pressure_old = Pb[i].pressure;
-        if (Pb[i].pressure < 0) {
-          cout << "!!!" << endl;
-        };
-      } else {
-        double vij = 1.04 * 0.01 / 60;                                       // m/s
-        Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
-        Pb[i].pressure_old = Pb[i].pressure;
-        if (Pb[i].pressure < 0) {
-          cout << "!!!" << endl;
-        };
-      }
-    }
-  }
+  // for (int i = 0; i < inlet; i++) {
+  //   bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
+  //   for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
+  //     reverse_mode<double> Pi, Wi;
+  //     reverse_mode<double>* Pjs;
+  //     reverse_mode<double>* Wjs;
+  //     double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
+  //     double Aij = pi * pow(Tb[j].Radiu, 2);
+  //     if (exists) {
+  //       double vij = 1.29 * 0.01 / 60;                                       // m/s
+  //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+  //       Pb[i].pressure_old = Pb[i].pressure;
+  //       if (Pb[i].pressure < 0) {
+  //         cout << "!!!" << endl;
+  //       };
+  //     } else {
+  //       double vij = 1.04 * 0.01 / 60;                                       // m/s
+  //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+  //       Pb[i].pressure_old = Pb[i].pressure;
+  //       if (Pb[i].pressure < 0) {
+  //         cout << "!!!" << endl;
+  //       };
+  //     }
+  //   }
+  // }
+  // for (int i = macro_n; i < macro_n + m_inlet; i++) {
+  //   bool exists = std::binary_search(inlet_boundary.begin(), inlet_boundary.end(), i);
+  //   for (int j = Pb[i].full_accum_ori - Pb[i].full_coord_ori; j < Pb[i].full_accum_ori; j++) {
+  //     reverse_mode<double> Pi, Wi;
+  //     reverse_mode<double>* Pjs;
+  //     reverse_mode<double>* Wjs;
+  //     double con = conductivity_bulk_kong(Pi, Pjs, Wi, Wjs, i, j).val();
+  //     double Aij = pi * pow(Tb[j].Radiu, 2);
+  //     if (exists) {
+  //       double vij = 1.29 * 0.01 / 60;                                       // m/s
+  //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+  //       Pb[i].pressure_old = Pb[i].pressure;
+  //       if (Pb[i].pressure < 0) {
+  //         cout << "!!!" << endl;
+  //       };
+  //     } else {
+  //       double vij = 1.04 * 0.01 / 60;                                       // m/s
+  //       Pb[i].pressure = Pb[Tb[j].ID_2].pressure + (Aij * vij / con);        // 更新孔隙压力
+  //       Pb[i].pressure_old = Pb[i].pressure;
+  //       if (Pb[i].pressure < 0) {
+  //         cout << "!!!" << endl;
+  //       };
+  //     }
+  //   }
+  // }
 
-  ofstream PP("pressure1.txt");
-  PP << std::scientific << std::setprecision(10);
-  norm_inf = 0;
-  for (int i = 0; i < pn; i++) {
-    PP << Pb[i].pressure << endl;
-  }
-  PP.close();
+  // ofstream PP("pressure1.txt");
+  // PP << std::scientific << std::setprecision(10);
+  // norm_inf = 0;
+  // for (int i = 0; i < pn; i++) {
+  //   PP << Pb[i].pressure << endl;
+  // }
+  // PP.close();
 
   /*--------------------------x(t+dt) = x(t) + dx----------------------*/
 
@@ -3773,7 +3786,7 @@ void PNMsolver::Paramentinput() {
           Pb[i].km = ko;
         }
       } else {
-        // ofstream inlet_coo("inlet_coo.txt");
+        ofstream inlet_coo("inlet_coo.txt");
         for (int i = 0; i < pn; i++) {
           double waste{0};
           porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> Pb[i].Radiu >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum;        // REV
@@ -3791,16 +3804,16 @@ void PNMsolver::Paramentinput() {
           //   inlet_coo << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << i << "\t" << Pb[i].Radiu << "\t" << Pb[i].type << endl;
           // }
 
-          // if (i < inlet) {
-          //   inlet_coo << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << i << "\t" << Pb[i].Radiu << "\t" << Pb[i].type << endl;
-          // } else if (i < macro_n + m_inlet && i >= macro_n) {
-          //   inlet_coo << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << i << "\t" << Pb[i].Radiu << "\t" << Pb[i].type << endl;
-          // }
+          if (i < inlet) {
+            inlet_coo << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << i << "\t" << Pb[i].Radiu << "\t" << Pb[i].type << endl;
+          } else if (i < macro_n + m_inlet && i >= macro_n) {
+            inlet_coo << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << "\t" << i << "\t" << Pb[i].Radiu << "\t" << Pb[i].type << endl;
+          }
         }
         porefile.close();
+        inlet_coo.close();
 
-        // inlet_coo.close();
-        // int count = 1710;
+        // int count = 1259;
         // string filename{"filtered_inlet_coo"};
         // ifstream inlet_coo1(filename + ".txt", ios::in);
         // ostringstream name;
