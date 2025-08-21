@@ -393,7 +393,7 @@ class GasAdsorptionData {
       ko = 3904.12E-21;
     }
 
-    W = 8e-9;
+    W = 6.2e-9;
     ko = pow(5.23e-9, 2) * 0.134 / 1.5 / 32;
     double pre = Average_pressure;
     double z = Average_compre;
