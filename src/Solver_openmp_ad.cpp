@@ -339,7 +339,7 @@ class PNMsolver        // 定义类
   void AMGX_solver_C_kong_PNM();         // kong
   void AMGX_flux_boundary();
 
-  void EIGEN_flux_boundary();
+  void EIGEN_GPU_flux_boundary();
 
   void Eigen_subroutine_per(Eigen::SparseMatrix<double, Eigen::RowMajor>&, Eigen::VectorXd&);
 
@@ -2855,7 +2855,7 @@ double PNMsolver::Function_Slip_clay(double knusen) {
   return Slip_c;
 }
 
-void PNMsolver::EIGEN_flux_boundary() {
+void PNMsolver::EIGEN_GPU_flux_boundary() {
   Flag_eigen = false;
   Flag_Hybrid = false;
   auto start1 = high_resolution_clock::now();
@@ -5669,5 +5669,5 @@ int main(int argc, char** argv) {
   // Solver.AMGX_solver_CO2_methane();
   // Solver.AMGX_solver_C_kong_PNM();
   Solver.AMGX_flux_boundary();
-  // Solver.EIGEN_flux_boundary();
+  // Solver.EIGEN_GPU_flux_boundary();
 }
