@@ -136,7 +136,7 @@ double viscosity = 2e-5;
 
 namespace Porous_media_property_Hybrid {
 double porosity = 0.1;        // 孔隙率
-double ko = 10e-15;         // 微孔达西渗透率 m^2
+double ko = 10e-15;           // 微孔达西渗透率 m^2
 double micro_radius{3.48e-9};
 }        // namespace Porous_media_property_Hybrid
 
@@ -193,9 +193,9 @@ int Flag_eigen{false};
 int Flag_Hybrid{false};
 int flag = 2;
 int flag1 = 2;
-int Flag_flux_bound{true};
-int Flag_species{true};
-int Flag_vector_data{true};
+int Flag_flux_bound{false};
+int Flag_species{false};
+int Flag_vector_data{false};
 std::string folderPath;
 std::string Gfilename("Pe_100");
 
@@ -2893,8 +2893,7 @@ void PNMsolver::EIGEN_flux_boundary() {
           << "\t" << "v_side = " << area_side_Q().first * 6e3 << " cm/min" << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6 << "\t"
           << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t"
           << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t";
-  outfile << "permeability = " << (area_main_Q().second + area_side_Q().second) * kong::viscosity * 2000 * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-15
-          << " mD" << endl;
+  outfile << "permeability = " << (area_main_Q().second + area_side_Q().second) * kong::viscosity * 2000 * voxel_size / (pow(1770 * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-15 << " mD" << endl;
 }
 
 int PNMsolver::conjugateGradient_solver(int iters_, double tol_) {
@@ -5563,7 +5562,7 @@ int main(int argc, char** argv) {
 
   PNMsolver Solver;
   // Solver.AMGX_solver_CO2_methane();
-  Solver.AMGX_solver_C_kong_PNM();
+  // Solver.AMGX_solver_C_kong_PNM();
   // Solver.AMGX_flux_boundary();
-  // Solver.EIGEN_flux_boundary();
+  Solver.EIGEN_flux_boundary();
 }

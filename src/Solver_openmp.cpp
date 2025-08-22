@@ -7483,44 +7483,44 @@ int main(int argc, char** argv) {
   }
   // Berea.mean_pore_size();
 
-  // PNMsolver Berea;
-  // switch (Mode) {
-  //   case 1:
-  //     Berea.AMGXsolver();
-  //     break;
-  //   case 2:
-  //     Berea.AMGX_permeability_solver(1);
-  //     break;
-  //   case 3:
-  //     Berea.AMGX_permeability_solver();
-  //     break;
-  //   case 4:
-  //     Berea.AMGX_solver_REV();
-  //     break;
-  //   case 5:
-  //     Berea.AMGX_solver_apparent_permeability_REV();
-  //     break;
-  //   case 6:
-  //     Berea.Eigen_solver_per(1);        // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
-  //     break;
-  //   case 7:
-  //     Berea.Eigen_solver_per();        // 1 代表 本征渗透率 计算 没有参数代表
-  //                                      // 表观渗透率计算
-  //     break;
-  //   case 8:
-  //     Berea.AMGX_solver_intri_permeability_REV();
-  //     break;
-  //   case 9:
-  //     Berea.Eigen_solver_intri_REV();
-  //     break;
-  //   case 10:
-  //     Berea.conjugateGradient_solver_per(1);
-  //     break;
-  //   case 11:
-  //     Berea.conjugateGradient_solver_per();
-  //   default:
-  //     break;
-  // }
+  PNMsolver Berea;
+  switch (Mode) {
+    case 1:
+      Berea.AMGXsolver();
+      break;
+    case 2:
+      Berea.AMGX_permeability_solver(1);
+      break;
+    case 3:
+      Berea.AMGX_permeability_solver();
+      break;
+    case 4:
+      Berea.AMGX_solver_REV();
+      break;
+    case 5:
+      Berea.AMGX_solver_apparent_permeability_REV();
+      break;
+    case 6:
+      Berea.Eigen_solver_per(1);        // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
+      break;
+    case 7:
+      Berea.Eigen_solver_per();        // 1 代表 本征渗透率 计算 没有参数代表
+                                       // 表观渗透率计算
+      break;
+    case 8:
+      Berea.AMGX_solver_intri_permeability_REV();
+      break;
+    case 9:
+      Berea.Eigen_solver_intri_REV();
+      break;
+    case 10:
+      Berea.conjugateGradient_solver_per(1);
+      break;
+    case 11:
+      Berea.conjugateGradient_solver_per();
+    default:
+      break;
+  }
   // PNMsolver* obj = new PNMsolver();        // 动态分配
   // for (int i = 0; i < 50; i++) {
   //   obj->AMGX_permeability_solver();
