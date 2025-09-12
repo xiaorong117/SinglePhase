@@ -129,9 +129,9 @@ double D_dispersion_macro{0.85e-9};        // 237.885 / 100 for 1st,  233.65 / 1
                                            // 2nd, 396.055 / 100 for 3rd.
 double D_dispersion_micro{0.05 * D_dispersion_macro};
 double inlet_C1 = 10;
-double outlet_C1 = 0;
+double outlet_C1 = 0.01;
 double inlet_C2 = 10;
-double outlet_C2 = 0;
+double outlet_C2 = 0.01;
 double viscosity = 2e-5;
 }        // namespace kong
 }        // namespace Fluid_property
@@ -385,7 +385,7 @@ class PNMsolver        // 定义类
   double error;
   int time_step = Time_step;
   double time_all = pyhsic_time;
-  double dt = 1e-8;
+  double dt = 1e-4;
   double dt2 = 1e-8;        // 与dt初值相同，用于输出结果文件
   double Q_outlet_macro{0};
   double Q_outlet_free_micro{0};
@@ -3120,7 +3120,7 @@ void PNMsolver::kong_matrix_QIN() {
       if ((inlet <= Tb[j].ID_2) && Tb[j].ID_2 < (op + inlet)) {
         COO_A[index_P1i].row = i - inlet + op + mp + 2;
         COO_A[index_P1i].col = Tb[j].ID_2 - inlet;
-        // COO_A[op + mp + coolist2[i - inlet] + counter1 + NA].val = 0;
+        // COO_A[index_P1i].val = 0;
         COO_A[index_P1i].val = P1js[counter].d(0);
 
         COO_A[index_C1i].row = i - inlet + op + mp + 2;
@@ -3129,7 +3129,7 @@ void PNMsolver::kong_matrix_QIN() {
 
         COO_A[index_P2i].row = i - inlet + (op + mp) * 2 + 2;
         COO_A[index_P2i].col = Tb[j].ID_2 - inlet;
-        // COO_A[op + mp + coolist2[i - inlet] + counter1 + 3 * NA].val = 0;
+        // COO_A[index_P2i].val = 0;
         COO_A[index_P2i].val = P2js[counter].d(0);
 
         COO_A[index_C2i].row = i - inlet + (op + mp) * 2 + 2;
@@ -3141,7 +3141,7 @@ void PNMsolver::kong_matrix_QIN() {
         index_P1i = op + mp + coolist2[i - inlet] + counter1 + NA + (inlet + m_inlet) * 2 + 2;
         COO_A[index_P1i].row = i - inlet + op + mp + 2;
         COO_A[index_P1i].col = Tb[j].ID_2 - para_macro;
-        // COO_A[op + mp + coolist2[i - inlet] + counter1 + NA].val = 0;
+        // COO_A[index_P1i].val = 0;
         COO_A[index_P1i].val = P1js[counter].d(0);
 
         COO_A[index_C1i].row = i - inlet + op + mp + 2;
@@ -3150,7 +3150,7 @@ void PNMsolver::kong_matrix_QIN() {
 
         COO_A[index_P2i].row = i - inlet + (op + mp) * 2 + 2;
         COO_A[index_P2i].col = Tb[j].ID_2 - para_macro;
-        // COO_A[op + mp + coolist2[i - inlet] + counter1 + 3 * NA].val = 0;
+        // COO_A[index_P2i].val = 0;
         COO_A[index_P2i].val = P2js[counter].d(0);
 
         COO_A[index_C2i].row = i - inlet + (op + mp) * 2 + 2;
@@ -3170,8 +3170,10 @@ void PNMsolver::kong_matrix_QIN() {
           COO_A[index_P2i].col = op + mp;
         }
         COO_A[index_P1i].row = i - inlet + op + mp + 2;
+        // COO_A[index_P1i].val = 0;
         COO_A[index_P1i].val = P1js[counter].d(0);
         COO_A[index_P2i].row = i - inlet + (op + mp) * 2 + 2;
+        // COO_A[index_P2i].val = 0;
         COO_A[index_P2i].val = P2js[counter].d(0);
         counter++;
       } else {
@@ -3227,7 +3229,7 @@ void PNMsolver::kong_matrix_QIN() {
     std::size_t index_P1i = i - para_macro + 1 * NA + (inlet + m_inlet) * 2 + 2;
     COO_A[index_P1i].row = i - para_macro + op + mp + 2;
     COO_A[index_P1i].col = i - para_macro;
-    // COO_A[i - para_macro + 1 * NA].val = 0;
+    // COO_A[index_P1i].val = 0;
     COO_A[index_P1i].val = P1i.d(0);
 
     std::size_t index_C1i = i - para_macro + 2 * NA + (inlet + m_inlet) * 3 + 2;
@@ -3239,7 +3241,7 @@ void PNMsolver::kong_matrix_QIN() {
     B[i - para_macro + (op + mp) * 2 + 2] = -F2.val();
     COO_A[index_P2i].row = i - para_macro + (op + mp) * 2 + 2;
     COO_A[index_P2i].col = i - para_macro;
-    // COO_A[i - para_macro + 3 * NA].val = 0;
+    // COO_A[index_P2i].val = 0;
     COO_A[index_P2i].val = P2i.d(0);
 
     std::size_t index_C2i = i - para_macro + 4 * NA + (inlet + m_inlet) * 4 + 2;
@@ -3257,7 +3259,7 @@ void PNMsolver::kong_matrix_QIN() {
       if ((inlet <= Tb[j].ID_2) && Tb[j].ID_2 < (op + inlet)) {
         COO_A[index_P1i].row = i - para_macro + op + mp + 2;
         COO_A[index_P1i].col = Tb[j].ID_2 - inlet;
-        // COO_A[op + mp + coolist2[i - para_macro] + counter1 + 1 * NA + (inlet + m_inlet) * 3 + 2].val = 0;
+        // COO_A[index_P1i].val = 0;
         COO_A[index_P1i].val = P1js[counter].d(0);
 
         COO_A[index_C1i].row = i - para_macro + op + mp + 2;
@@ -3266,7 +3268,7 @@ void PNMsolver::kong_matrix_QIN() {
 
         COO_A[index_P2i].row = i - para_macro + (op + mp) * 2 + 2;
         COO_A[index_P2i].col = Tb[j].ID_2 - inlet;
-        // COO_A[op + mp + coolist2[i - para_macro] + counter1 + 3 * NA + (inlet + m_inlet) * 3 + 2].val = 0;
+        // COO_A[index_P2i].val = 0;
         COO_A[index_P2i].val = P2js[counter].d(0);
 
         COO_A[index_C2i].row = i - para_macro + (op + mp) * 2 + 2;
@@ -3278,7 +3280,7 @@ void PNMsolver::kong_matrix_QIN() {
         index_P1i = op + mp + coolist2[i - para_macro] + counter1 + 1 * NA + (inlet + m_inlet) * 2 + 2;
         COO_A[index_P1i].row = i - para_macro + op + mp + 2;
         COO_A[index_P1i].col = Tb[j].ID_2 - para_macro;
-        // COO_A[op + mp + coolist2[i - para_macro] + counter1 + 1 * NA + (inlet + m_inlet) * 2 + 2].val = 0;
+        // COO_A[index_P1i].val = 0;
         COO_A[index_P1i].val = P1js[counter].d(0);
 
         COO_A[index_C1i].row = i - para_macro + op + mp + 2;
@@ -3287,7 +3289,7 @@ void PNMsolver::kong_matrix_QIN() {
 
         COO_A[index_P2i].row = i - para_macro + (op + mp) * 2 + 2;
         COO_A[index_P2i].col = Tb[j].ID_2 - para_macro;
-        // COO_A[op + mp + coolist2[i - para_macro] + counter1 + 3 * NA].val = 0;
+        // COO_A[index_P2i].val = 0;
         COO_A[index_P2i].val = P2js[counter].d(0);
 
         COO_A[index_C2i].row = i - para_macro + (op + mp) * 2 + 2;
@@ -3307,8 +3309,10 @@ void PNMsolver::kong_matrix_QIN() {
           COO_A[index_P2i].col = op + mp;
         }
         COO_A[index_P1i].row = i - para_macro + op + mp + 2;
+        // COO_A[index_P1i].val = 0;
         COO_A[index_P1i].val = P1js[counter].d(0);
         COO_A[index_P2i].row = i - para_macro + (op + mp) * 2 + 2;
+        // COO_A[index_P2i].val = 0;
         COO_A[index_P2i].val = P2js[counter].d(0);
         counter++;
       } else {
