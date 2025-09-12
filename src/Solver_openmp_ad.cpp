@@ -56,7 +56,7 @@ using namespace fadbad;
 template <typename T>
 using reverse_mode = B<T>;
 static int FLAG = 0;
-int number_inlet = 50;
+int number_inlet = 1;
 int number_outlet = 1;
 
 std::vector<int> inlet_boundary(number_inlet);
@@ -138,7 +138,7 @@ double viscosity = 2e-5;
 
 namespace Porous_media_property_Hybrid {
 double porosity = 0.1;        // 孔隙率
-double ko = 100e-15;          // 微孔达西渗透率 m^2
+double ko = 1e-15;            // 微孔达西渗透率 m^2
 double micro_radius{3.48e-9};
 }        // namespace Porous_media_property_Hybrid
 
@@ -196,7 +196,7 @@ int Flag_Hybrid{false};
 int flag = 2;
 int flag1 = 2;
 int Flag_flux_bound{false};
-int Flag_species{true};
+int Flag_species{false};
 int Flag_vector_data{false};
 int Flag_QIN{true};
 int Flag_QIN_Per{false};
@@ -385,7 +385,7 @@ class PNMsolver        // 定义类
   double error;
   int time_step = Time_step;
   double time_all = pyhsic_time;
-  double dt = 1e-3;
+  double dt = 1e-9;
   double dt2 = 1e-8;        // 与dt初值相同，用于输出结果文件
   double Q_outlet_macro{0};
   double Q_outlet_free_micro{0};
@@ -2890,9 +2890,9 @@ void PNMsolver::kong_matrix_QIN() {
   for (int i = 0; i < (op + mp) * 3 + 2; i++) {
     B[i] = 0;
   }
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(int(OMP_PARA))
-  // #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
   for (int i = inlet; i < op + inlet; i++) {
     reverse_mode<double> Pi, Wi, F;
     reverse_mode<double>*Pjs, *Wjs;
@@ -2963,15 +2963,15 @@ void PNMsolver::kong_matrix_QIN() {
     delete[] Wjs;
   }
 
-  /* -------------------------------------------------------------------------------------
+/* -------------------------------------------------------------------------------------
  */
-  /* 微孔组装 */
-  /* -------------------------------------------------------------------------------------
+/* 微孔组装 */
+/* -------------------------------------------------------------------------------------
  */
-  // micropore
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(int(OMP_PARA))
-  // #endif
+// micropore
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
   for (int i = macro_n + m_inlet; i < pn - m_outlet; i++) {
     reverse_mode<double> Pi, Wi, F;
     reverse_mode<double>*Pjs, *Wjs;
@@ -3042,22 +3042,21 @@ void PNMsolver::kong_matrix_QIN() {
     delete[] Pjs;
     delete[] Wjs;
   }
-  /* -------------------------------------------------------------------------------------
+/* -------------------------------------------------------------------------------------
    */
-  /* TRANSPORT EQUATION SOLEVR */
-  /* -------------------------------------------------------------------------------------
+/* TRANSPORT EQUATION SOLEVR */
+/* -------------------------------------------------------------------------------------
    */
 
-  /* -------------------------------------------------------------------------------------
+/* -------------------------------------------------------------------------------------
    */
-  /* 大孔组装 */
-  /* -------------------------------------------------------------------------------------
+/* 大孔组装 */
+/* -------------------------------------------------------------------------------------
    */
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(int(OMP_PARA))
-  // #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
   for (int i = inlet; i < op + inlet; i++) {
-    int id = omp_get_thread_num();
     reverse_mode<double> P1i, P2i, C1i, C2i, F1, F2;
     reverse_mode<double>*P1js, *P2js, *C1js, *C2js;
     P1js = new reverse_mode<double>[Pb[i].full_coord];
@@ -3076,9 +3075,9 @@ void PNMsolver::kong_matrix_QIN() {
       P2js[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].pressure + refer_pressure;
       C1js[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].C1;
       C2js[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].C2;
-      Tb[j].Conductivity = conductivity_bulk_kong(P1i, P1js, C1i, C1js, i, j).val();
-      Tb[j].Surface_diff_conduc = conductivity_co2_DISPERSION_kong(P1i, P1js, C1i, C1js, i, j).val();
-      Tb[j].Pore_1 = Pb[i].volume * (C1i.val() - Pb[i].C2_old) / dt;
+      // Tb[j].Conductivity = conductivity_bulk_kong(P1i, P1js, C1i, C1js, i, j).val();
+      // Tb[j].Surface_diff_conduc = conductivity_co2_DISPERSION_kong(P1i, P1js, C1i, C1js, i, j).val();
+      // Tb[j].Pore_1 = Pb[i].volume * (C1i.val() - Pb[i].C2_old) / dt;
     }
 
     F1 = func_TRANSPORT_FLOW_kong(P1i, P1js, C1i, C1js, 1, i);
@@ -3186,15 +3185,15 @@ void PNMsolver::kong_matrix_QIN() {
     delete[] C2js;
   }
 
-  /* -------------------------------------------------------------------------------------
+/* -------------------------------------------------------------------------------------
  */
-  /* 微孔组装 */
-  /* -------------------------------------------------------------------------------------
+/* 微孔组装 */
+/* -------------------------------------------------------------------------------------
  */
-  // micropore
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(int(OMP_PARA))
-  // #endif
+// micropore
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
   for (int i = macro_n + m_inlet; i < pn - m_outlet; i++) {
     reverse_mode<double> P1i, P2i, C1i, C2i, F1, F2;
     reverse_mode<double>*P1js, *P2js, *C1js, *C2js;
@@ -3214,9 +3213,9 @@ void PNMsolver::kong_matrix_QIN() {
       P2js[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].pressure + refer_pressure;
       C1js[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].C1;
       C2js[j - (Pb[i].full_accum - Pb[i].full_coord)] = Pb[Tb[j].ID_2].C2;
-      Tb[j].Conductivity = conductivity_bulk_kong(P1i, P1js, C1i, C1js, i, j).val();
-      Tb[j].Surface_diff_conduc = conductivity_co2_DISPERSION_kong(P1i, P1js, C1i, C1js, i, j).val();
-      Tb[j].Pore_1 = Pb[i].volume * (C1i.val() - Pb[i].C2_old) / dt;
+      // Tb[j].Conductivity = conductivity_bulk_kong(P1i, P1js, C1i, C1js, i, j).val();
+      // Tb[j].Surface_diff_conduc = conductivity_co2_DISPERSION_kong(P1i, P1js, C1i, C1js, i, j).val();
+      // Tb[j].Pore_1 = Pb[i].volume * (C1i.val() - Pb[i].C2_old) / dt;
     }
 
     F1 = func_TRANSPORT_FLOW_kong(P1i, P1js, C1i, C1js, 1, i);
@@ -4454,8 +4453,8 @@ void PNMsolver::AMGX_solver_C_kong_PNM_QIN() {
   AMGX_vector_create(&b_amgx, rsrc, AMGX_mode_dDDI);
   AMGX_vector_create(&solution_amgx, rsrc, AMGX_mode_dDDI);
 
-  int n_amgx = (op + mp) * 3;
-  int nnz_amgx = ia[(op + mp) * 3];
+  int n_amgx = (op + mp) * 3 + 2;
+  int nnz_amgx = ia[(op + mp) * 3 + 2];
   AMGX_pin_memory(ia, (n_amgx + 1) * sizeof(int));
   AMGX_pin_memory(ja, nnz_amgx * sizeof(int));
   AMGX_pin_memory(a, nnz_amgx * sizeof(double));
@@ -6705,10 +6704,10 @@ void PNMsolver::AMGXsolver_subroutine_kong(AMGX_matrix_handle& A_amgx, AMGX_vect
     Pb[i].C2 = Pb[Tb[Pb[i].full_accum - Pb[i].full_coord].ID_2].C2;
   }
 
-  ofstream Pb_out("pressure.txt");
-  for (std::size_t i = 0; i < pn; i++) {
-    Pb_out << Pb[i].pressure << "\t" << Pb[i].C1 << "\t" << Pb[i].C2 << endl;
-  }
+  // ofstream Pb_out("pressure.txt");
+  // for (std::size_t i = 0; i < pn; i++) {
+  //   Pb_out << Pb[i].pressure << "\t" << Pb[i].C1 << "\t" << Pb[i].C2 << endl;
+  // }
   /*-----------------------------边界条件---------------------------------*/
   auto stop = high_resolution_clock::now();
   auto duration = duration_cast<milliseconds>(stop - start);
@@ -7070,13 +7069,13 @@ void PNMsolver::Matrix_COO2CSR() {
     nnz = NA;
   }
 
-  // qsort(COO_A, nnz, sizeof(coo), sort_by_row);        // sort by row
+  qsort(COO_A, nnz, sizeof(coo), sort_by_row);        // sort by row
 
-  // ofstream COOA_OUT("COOA_ad_sorted.txt");
+  ofstream COOA_OUT("COOA_ad_sorted.txt");
 
-  // for (size_t i = 0; i < nnz; i++) {
-  //   COOA_OUT << COO_A[i].row << " " << COO_A[i].col << " " << COO_A[i].val << endl;
-  // }
+  for (size_t i = 0; i < nnz; i++) {
+    COOA_OUT << COO_A[i].row << " " << COO_A[i].col << " " << COO_A[i].val << endl;
+  }
 
 #ifdef _OPENMP
   double start = omp_get_wtime();
