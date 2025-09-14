@@ -56,7 +56,7 @@ using namespace fadbad;
 template <typename T>
 using reverse_mode = B<T>;
 static int FLAG = 0;
-int number_inlet = 980;
+int number_inlet = 1;
 int number_outlet = 1;
 
 std::vector<int> inlet_boundary(number_inlet);
@@ -138,7 +138,7 @@ double viscosity = 2e-5;
 
 namespace Porous_media_property_Hybrid {
 double porosity = 0.1;        // 孔隙率
-double ko = 1e-15;            // 微孔达西渗透率 m^2
+double ko = 1;                // 微孔达西渗透率 m^2
 double micro_radius{3.48e-9};
 }        // namespace Porous_media_property_Hybrid
 
@@ -186,7 +186,7 @@ double refer_pressure{0};
 
 namespace Solver_property {
 double voxel_size = 2e-6;        // 像素尺寸，单位m    5.345e-6 8e-9
-double domain_size_cubic = 500;
+double domain_size_cubic = 1770;
 int Time_step{0};
 int percentage_production_counter{1};
 double pyhsic_time{0};
@@ -197,12 +197,12 @@ int flag = 2;
 int flag1 = 2;
 int Flag_flux_bound{false};
 int Flag_species{false};
-int Flag_vector_data{false};
-int Flag_QIN{true};
-int Flag_QIN_Per{false};
+int Flag_vector_data{true};
+int Flag_QIN{false};
+int Flag_QIN_Per{true};
 
 std::string folderPath;
-std::string Gfilename("Pe_100");
+std::string Gfilename("Pe_per");
 
 int pn = 1;        // 505050不联通 sample3  r=2
 int tn = 1;
@@ -5374,9 +5374,7 @@ void PNMsolver::para_cal() {
     Pb[i].full_coord = 0;
     Pb[i].full_accum = 0;
   }
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
-#endif
+
   for (int i = 0; i <= label; i++) {
     Pb[Tb[i].ID_1].full_coord += 1;
   }
@@ -5734,9 +5732,7 @@ void PNMsolver::para_cal(double mode) {
     Pb[i].full_coord = 0;
     Pb[i].full_accum = 0;
   }
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(int(OMP_PARA))
-#endif
+
   for (int i = 0; i <= label; i++) {
     Pb[Tb[i].ID_1].full_coord += 1;
   }
@@ -5919,7 +5915,7 @@ void PNMsolver::para_cal_in_newton(double mode) {
     Pb[i].full_coord = 0;
     Pb[i].full_accum = 0;
   }
-#pragma omp parallel for num_threads(int(omp_get_max_threads() * 0.8))
+
   for (int i = 0; i <= label; i++) {
     Pb[Tb[i].ID_1].full_coord += 1;
   }
@@ -5986,11 +5982,12 @@ void PNMsolver::para_cal_kong() {
     Pb[i].full_accum = 0;
   }
 
-  for (int i = 0; i < label; i++) {
+  for (int i = 0; i <= label; i++) {
     Pb[Tb[i].ID_1].full_coord += 1;
   }
 
   Pb[0].full_accum = Pb[0].full_coord;
+
   for (int i = 1; i < pn; i++) {
     Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
   }
@@ -6099,6 +6096,8 @@ void PNMsolver::para_cal_kong() {
     inlet_boundary[i] = id;
   }
   inlet_coo1.close();
+
+  std::sort(inlet_boundary.begin(), inlet_boundary.end());
 
   if (Flag_flux_bound == true) {
     for (int i = 0; i < inlet; i++) {
@@ -7110,11 +7109,11 @@ void PNMsolver::Matrix_COO2CSR() {
 
   qsort(COO_A, nnz, sizeof(coo), sort_by_row);        // sort by row
 
-  // ofstream COOA_OUT("COOA_ad_sorted.txt");
+  ofstream COOA_OUT("COOA_ad_sorted.txt");
 
-  // for (size_t i = 0; i < nnz; i++) {
-  //   COOA_OUT << COO_A[i].row << " " << COO_A[i].col << " " << COO_A[i].val << endl;
-  // }
+  for (size_t i = 0; i < nnz; i++) {
+    COOA_OUT << COO_A[i].row << " " << COO_A[i].col << " " << COO_A[i].val << endl;
+  }
 
 #ifdef _OPENMP
   double start = omp_get_wtime();
@@ -7195,10 +7194,11 @@ int main(int argc, char** argv) {
   cout << folderPath << endl;
 
   PNMsolver Solver;
+
   // Solver.AMGX_solver_CO2_methane();
   // Solver.AMGX_solver_C_kong_PNM();
-  Solver.AMGX_solver_C_kong_PNM_QIN();
-  // Solver.AMGX_flux_boundary_QIN();
+  // Solver.AMGX_solver_C_kong_PNM_QIN();
+  Solver.AMGX_flux_boundary_QIN();
   // Solver.AMGX_flux_boundary();
   // Solver.EIGEN_GPU_flux_boundary();
 }
