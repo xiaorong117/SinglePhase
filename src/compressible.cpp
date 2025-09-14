@@ -21,23 +21,25 @@ static int icount = 0;
 int Flag_gpu = false;
 ////常量设置
 double pi = 3.1415927;
-double gas_vis = 1.4e-3;                          //粘度
-double porosity = 0.31;                           //孔隙率
-double ko = 5e-15;                                //΢微孔达西渗透率
-double inlet_pre = 1000;                          //进口压力
-double outlet_pre = 0;                            //出口压力
-double D = 9e-9;                                  //扩散系数
-double Effect_D = 0.05 * D;                       //微孔中的有效扩散系数
-double voxel_size = 5e-4;                         //像素尺寸，单位m    5.345e-6
-int outlet_element_n[3] = {200, 200, 400};        //模型的在各个方向的像素数量，本模拟所用模型为正方形
+double gas_vis = 1.4e-3;              //粘度
+double porosity = 0.31;               //孔隙率
+double ko = 5e-15;                    //΢微孔达西渗透率
+double inlet_pre = 8e7;               //进口压力
+double outlet_pre = 8e7 - 2e6;        //出口压力
+double ave_inlet_pre;
+double D = 9e-9;                                //扩散系数
+double Effect_D = 0.05 * D;                     //微孔中的有效扩散系数
+double voxel_size = 10e-4;                      //像素尺寸，单位m    5.345e-6
+int outlet_element_n[3] = {75, 75, 225};        //模型的在各个方向的像素数量，本模拟所用模型为正方形
 int inter_i;
+int max_inter_n = 50;
 // const int NUM_THREADS=4;
 
-const int pn = 656539;
-const int tn = 2330254;
-const int inlet = 1, op = 326, outlet = 9, m_inlet = 1239, mp = 651154, m_outlet = 3810;
-const int macro_n = inlet + op + outlet;
-const int micro_n = m_inlet + mp + m_outlet;
+const int pn = 187783;
+const int tn = 647030;
+const int inlet = 2, macro_n = 113, outlet = 6, m_inlet = 1410, micro_n = 187670, m_outlet = 1589;
+const int op = macro_n - inlet - outlet;
+const int mp = micro_n - m_inlet - m_outlet;
 const int para_macro = inlet + outlet + m_inlet;
 const int NA = (tn - inlet - outlet - m_inlet - m_outlet) * 2 + (op + mp);
 
@@ -106,13 +108,13 @@ class PNMsolver        //定义类
   double error;
   int time_step = 0;
   double time_all = 0;
-  double dt = 1e-3;
-  double dt2 = 1e-3;        //与dt初值相同，用于输出结果文件
+  double dt = 1e-5;
+  double dt2 = 1e-5;        //与dt初值相同，用于输出结果文件
   double Q_outlet_macro;
   double Q_outlet_micro;
   double total_p;        // total gas content in research domian
   double norm_inf = 0;
-  double eps = 1e-3;        //set residual for dx
+  double eps = 1;        //set residual for dx
 
   int iterations_number = 0;
   //double total_p=2.75554e-8;
@@ -131,8 +133,9 @@ class PNMsolver        //定义类
   double Nor_inf(double A[]);        //误差
   double macro_outlet_flow();        //出口大孔流量
   double micro_outlet_flow();        //出口微孔流量
-  void solver();                     //瞬态扩散迭代求解流程
-  void output(int n);                //输出VTK文件
+  double inlet_average_pressure();
+  void solver();             //瞬态扩散迭代求解流程
+  void output(int n);        //输出VTK文件
   //double permeability();
 
   ~PNMsolver()        //析构函数，释放动态存储
@@ -227,11 +230,12 @@ void PNMsolver::Paramentinput() {
 
 void PNMsolver::para_cal() {
   //计算孔隙的体积
-  for (int i = 0; i < pn; i++) {
-    if (Pb[i].type == 0) {
-      Pb[i].volume = 4 * pi * pow(Pb[i].Radiu, 3) / 3;        //孔隙网络单元
+  for (int i = 0; i < macro_n; i++) {
+    Pb[i].volume = 4 * pi * pow(Pb[i].Radiu, 3) / 3;        //孔隙网络单元
+  }
 
-    } else if (Pb[i].type == 1) {
+  for (int i = macro_n; i < pn; i++) {
+    if (Pb[i].type == 1) {
       Pb[i].volume = pow(Pb[i].Radiu, 3);        //正方形微孔单元
     } else {
       Pb[i].volume = pow(Pb[i].Radiu, 3) / 2;        //2×2×1、1×2×2和2×1×2的微孔网格
@@ -239,13 +243,17 @@ void PNMsolver::para_cal() {
   }
 
   for (int i = 0; i < pn; i++) {
+    if (i == 107) {
+      cout << i << "  de" << Pb[i].porosity << endl;
+    }
     if (i < macro_n) {
       Pb[i].porosity = 1;
     } else {
       if (Pb[i].porosity == 1)        //基质
       {
         Pb[i].porosity = 0.01;
-        Pb[i].cond = Pb[i].porosity * pow(5e-6, 2) / (32 * 4.5 * 4.5);
+        //         Pb[i].cond = Pb[i].porosity * pow(5e-6, 2) / (32 * 4.5 * 4.5);
+        Pb[i].cond = 1e-16;
       } else if (Pb[i].porosity == 2)        //裂缝
       {
         Pb[i].porosity = 0.5;
@@ -265,6 +273,9 @@ void PNMsolver::para_cal() {
   double temp1 = 0, temp2 = 0, angle1 = 0, angle2 = 0, length1 = 0, length2 = 0;        //两点流量计算中的临时存储变量
 
   for (int i = 0; i < 2 * tn; i++) {
+    if (i == 925) {
+      cout << "  de" << endl;
+    }
     if (Tb_in[i].ID_1 < macro_n && Tb_in[i].ID_2 < macro_n) {
       if (Tb_in[i].Length <= 0)        //剔除可能存在的负喉道长度
       {
@@ -378,6 +389,8 @@ void PNMsolver::para_cal() {
       cout << "ChannelLength[" << i << "]=" << Tb_in[i].Length << "\t" << "cond[" << i << "]=" << Tb_in[i].Conductivity << endl;
     }
   }
+  // int number;
+  // cin >> number;
 }
 
 void PNMsolver::PressureMatrix() {
@@ -609,7 +622,7 @@ void PNMsolver::GPU_solver() {
   auto start1 = high_resolution_clock::now();
   double acu_flow_macro, acu_flow_micro;
   Flag_gpu = true;
-  int n = 1;                                   //label of output file
+  int n = 0;                                   //label of output file
   int inter_n;                                 //The interation of outer loop of Newton-raphoon method
   double total_flow = 0;                       //accumulation production
   ofstream outfile("Permeability.txt");        //output permeability;
@@ -618,7 +631,7 @@ void PNMsolver::GPU_solver() {
   Paramentinput();
   para_cal();
   PressureMatrix();
-
+  outfile << "total_p=" << total_p << endl;
   // begin GPU initialization
   GPUObjects _obj;
   _obj = GPU_init(ia, ja, a, B, geta_X, op + mp);
@@ -637,7 +650,7 @@ void PNMsolver::GPU_solver() {
       inter_n++;
       cout << "Inf_norm = " << norm_inf << "\t\t" << "dt = " << dt << "\t\t" << "inner loop times = " << inter_n << "\t\t" << "outer loop times= " << time_step << endl;
       cout << endl;
-    } while (norm_inf > eps);
+    } while (norm_inf > eps && inter_n < max_inter_n);
 
     icount = 0;        //重置计数器
 
@@ -670,16 +683,19 @@ void PNMsolver::GPU_solver() {
     Q_outlet_macro = macro_outlet_flow();
     Q_outlet_micro = micro_outlet_flow();
     if (time_step % 20 == 0) {
-      outfile << time_all << "\t" << Q_outlet_macro << "\t" << Q_outlet_micro << "\t" << acu_flow_macro << "\t" << acu_flow_micro << endl;
+      ave_inlet_pre = inlet_average_pressure();
+      outfile << time_all << "\t" << Q_outlet_macro << "\t" << Q_outlet_micro << "\t" << acu_flow_macro << "\t" << acu_flow_micro << "\t" << "inlet_p=" << ave_inlet_pre << "\t"
+              << "outlet_p=" << outlet_pre << endl;
+      //       outfile << time_all << "\t" << Q_outlet_macro << "\t" << Q_outlet_micro << "\t" << acu_flow_macro << "\t" << acu_flow_micro << endl;
 
-      if (inter_i < 10) {
-        dt = dt * 2;
-      } else if (inter_i > 25) {
-        dt = dt / 2;
+      if (inter_n < 10) {
+        dt = dt * 1.5;
+      } else if (inter_n > 25) {
+        dt = dt / 1.5;
       }
     }
 
-    if (total_flow / total_p > 0.1 * n) {
+    if (total_flow / total_p > 0.05 * n) {
       output(time_step);
       n++;
     }
@@ -935,6 +951,22 @@ double PNMsolver::micro_outlet_flow() {
   return Q_outlet;
 }
 
+double PNMsolver::inlet_average_pressure() {
+  double cum_pre = 0;
+  double cum_vol = 0;
+  double ave_pre = 0;
+  for (int i = 0; i < inlet; i++) {
+    cum_pre = cum_pre + Pb[i].pressure * Pb[i].volume;
+    cum_vol += Pb[i].volume;
+  }
+  for (int i = macro_n; i < macro_n + m_inlet; i++) {
+    cum_pre = cum_pre + Pb[i].pressure * Pb[i].volume;
+    cum_vol += Pb[i].volume;
+  }
+  ave_pre = cum_pre / cum_vol;
+  return ave_pre;
+}
+
 void PNMsolver::output(int n) {
   ostringstream name;
   name << "filename_" << int(n) << ".vtk";
@@ -1004,12 +1036,18 @@ void PNMsolver::output(int n) {
 void PNMsolver::GPU_solver_subroutine(GPUObjects& _obj) {
   auto start = high_resolution_clock::now();
   GPU_solveX(icount, ia, ja, a, B, geta_X, _obj);
-  norm_inf = 0;
+  //   norm_inf = 0;
+  //   for (size_t i = 0; i < op + mp; i++) {
+  //     norm_inf += geta_X[i] * geta_X[i];
+  //   }
+  //   norm_inf = sqrt(norm_inf);
+  //   cout << "Inf_norm = " << norm_inf << endl;
+  norm_inf = abs(geta_X[0]);
   for (size_t i = 0; i < op + mp; i++) {
-    norm_inf += geta_X[i] * geta_X[i];
+    if (norm_inf < abs(geta_X[i])) {
+      norm_inf = abs(geta_X[i]);
+    }
   }
-  norm_inf = sqrt(norm_inf);
-  cout << "Inf_norm = " << norm_inf << endl;
 
   //更新应力场
   for (int i = inlet; i < inlet + op; i++) {
@@ -1041,7 +1079,7 @@ void PNMsolver::solver() {
   int inter_n;                                 //The interation of outer loop of Newton-raphoon method
   double total_flow = 0;                       //accumulation production
   ofstream outfile("Permeability.txt");        //output permeability;
-
+  outfile << "total_p=" << total_p << endl;
   memory();
   Paramentinput();
   para_cal();
@@ -1055,7 +1093,7 @@ void PNMsolver::solver() {
       inter_n++;
       cout << "Inf_norm = " << norm_inf << "\t\t" << "dt = " << dt << "\t\t" << "inner loop times = " << inter_n << "\t\t" << "outer loop times= " << time_step << endl;
       cout << endl;
-    } while (norm_inf > eps);
+    } while (norm_inf > eps && inter_n < max_inter_n);
     // PressureMatrix();
     // EigenSolve();
 
@@ -1088,7 +1126,9 @@ void PNMsolver::solver() {
     Q_outlet_macro = macro_outlet_flow();
     Q_outlet_micro = micro_outlet_flow();
     if (time_step % 20 == 0) {
-      outfile << time_all << "\t" << Q_outlet_macro << "\t" << Q_outlet_micro << "\t" << acu_flow_macro << "\t" << acu_flow_micro << endl;
+      ave_inlet_pre = inlet_average_pressure();
+      outfile << time_all << "\t" << Q_outlet_macro << "\t" << Q_outlet_micro << "\t" << acu_flow_macro << "\t" << acu_flow_micro << "\t" << "inlet_p=" << ave_inlet_pre << "\t"
+              << "outlet_p=" << outlet_pre << endl;
 
       if (inter_i < 10) {
         dt = dt * 2;
@@ -1097,7 +1137,7 @@ void PNMsolver::solver() {
       }
     }
 
-    if (total_flow / total_p > 0.1 * n) {
+    if (total_flow / total_p > 0.05 * n) {
       output(time_step);
       n++;
     }
