@@ -358,43 +358,46 @@ class GasAdsorptionData {
     // std::array<double,2>arr = {K_apparent_w, K_apparent};
     if (Flag_intrin == true) {
       // return calculatePermeability_intrin(min_w(), w2);        // 使用本征渗透率计算
-      double W = 6.3e-9;        //
-      return pow(W, 2) * 0.134 / 1.5 / 32;
+      // double W = 6.3e-9;        //
+      // return pow(W, 2) * 0.134 / 1.5 / 32;
+      return w2;
     } else {
-      return K_apparent(w2);
+      return K_apparent(w1,w2);
       // return calculatePermeability(min_w(),w2); // 使用表观渗透率计算
     }
     // return  calculate_Permeability_aver(min_w(),w2)[0];
   }
-  double K_apparent(double w2) {
-    double W = 0;
+  double K_apparent(double w1,double w2) {
+    double W = w1;
     double ko = 0;
-    if (w2 <= 5e-9) {
-      int index = int(refer_pressure / 1e6) - 1;
-      W = 2.32e-9;        // 2 nm
-      ko = 11E-21;        // 2 nm
-    } else if (5E-9 < w2 && w2 <= 9e-9) {
-      int index = int(refer_pressure / 1e6) - 1;
-      W = 4.86e-9;        // 2 nm
-      ko = 45E-21;
-    } else if (9E-9 < w2 && w2 <= 17e-9) {
-      int index = int(refer_pressure / 1e6) - 1;
-      W = 9.42E-9;        // 2 nm
-      ko = 161E-21;
-    } else if (17E-9 < w2 && w2 <= 33e-9) {
-      int index = int(refer_pressure / 1e6) - 1;
-      W = 17.88E-9;        // 2 nm
-      ko = 515E-21;
-    } else if (33E-9 < w2 && w2 <= 65e-9) {
-      W = 36.8E-9;        // 2 nm
-      ko = 2293.81E-21;
-    } else if (34E-9 < w2 && w2 <= 130e-9) {
-      W = 50E-9;        // 2 nm
-      ko = 3904.12E-21;
-    }
+    // if (w2 <= 5e-9) {
+    //   int index = int(refer_pressure / 1e6) - 1;
+    //   W = 2.32e-9;        // 2 nm
+    //   ko = 11E-21;        // 2 nm
+    // } else if (5E-9 < w2 && w2 <= 9e-9) {
+    //   int index = int(refer_pressure / 1e6) - 1;
+    //   W = 4.86e-9;        // 2 nm
+    //   ko = 45E-21;
+    // } else if (9E-9 < w2 && w2 <= 17e-9) {
+    //   int index = int(refer_pressure / 1e6) - 1;
+    //   W = 9.42E-9;        // 2 nm
+    //   ko = 161E-21;
+    // } else if (17E-9 < w2 && w2 <= 33e-9) {
+    //   int index = int(refer_pressure / 1e6) - 1;
+    //   W = 17.88E-9;        // 2 nm
+    //   ko = 515E-21;
+    // } else if (33E-9 < w2 && w2 <= 65e-9) {
+    //   W = 36.8E-9;        // 2 nm
+    //   ko = 2293.81E-21;
+    // } else if (34E-9 < w2 && w2 <= 130e-9) {
+    //   W = 50E-9;        // 2 nm
+    //   ko = 3904.12E-21;
+    // }
 
-    W = 6.2e-9;
-    ko = pow(5.23e-9, 2) * 0.134 / 1.5 / 32;
+    // W = 6.2e-9;
+    // ko = pow(5.23e-9, 2) * 0.134 / 1.5 / 32;
+    // W = w2;
+    ko = w2;
     double pre = Average_pressure;
     double z = Average_compre;
     double rho_g = pre * 0.016 / (z * 8.314 * Temperature);        // kg/m3
