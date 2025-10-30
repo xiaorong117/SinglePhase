@@ -84,10 +84,10 @@ double domain_size_cubic = 384;        // 384 for REV
 double domain_length = 0;
 double T_critical{190.564};            // 甲烷的临界温度 190.564K
 double P_critical{4.599 * 1e6};        // 甲烷的临界压力 4.599MPa
-double Temperature{400};               // 温度
-double Rho_ad{400};                    // kg/m3
-double n_max_ad{44.8};                 // kg/m3
-double K_langmuir{4e-8};               // Pa^(-1)
+double Temperature{333};               // 温度 333 373 413
+double Rho_ad{350.69};                    // kg/m3 350.69  314.48   300
+double n_max_ad{Rho_ad * 0.08};                 // kg/m3 44.8  0.08 cm3/g -> 0.08 cm3/cm3 ->  0.08 m3/m3
+double K_langmuir{6.74e-8};               // Pa^(-1)
 double Ds{2.46e-8};                    // m2/s
 
 double porosity_OMHP1{0.243};           // 含水时 porosity_1 会变
@@ -7491,53 +7491,53 @@ int main(int argc, char** argv) {
   }
   // Berea.mean_pore_size();
 
-  PNMsolver Berea;
-  switch (Mode) {
-    case 1:
-      Berea.AMGXsolver();
-      break;
-    case 2:
-      Berea.AMGX_permeability_solver(1);
-      break;
-    case 3:
-      Berea.AMGX_permeability_solver();
-      break;
-    case 4:
-      Berea.AMGX_solver_REV();
-      break;
-    case 5:
-      Berea.AMGX_solver_apparent_permeability_REV();
-      break;
-    case 6:
-      Berea.Eigen_solver_per(1);        // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
-      break;
-    case 7:
-      Berea.Eigen_solver_per();        // 1 代表 本征渗透率 计算 没有参数代表
-                                       // 表观渗透率计算
-      break;
-    case 8:
-      Berea.AMGX_solver_intri_permeability_REV();
-      break;
-    case 9:
-      Berea.Eigen_solver_intri_REV();
-      break;
-    case 10:
-      Berea.conjugateGradient_solver_per(1);
-      break;
-    case 11:
-      Berea.conjugateGradient_solver_per();
-    default:
-      break;
-  }
-  // PNMsolver* obj = new PNMsolver();        // 动态分配
-  // for (int i = 0; i < 50; i++) {
-  //   obj->AMGX_permeability_solver();
-  //   delete obj;                   // 手动销毁
-  //   obj = nullptr;                // 避免悬空指针，可选但推荐
-  //   obj = new PNMsolver();        // 重新分配内存
-  //   iii += 1;
-  //   icount = 0;        // 重置迭代计数器
+  // PNMsolver Berea;
+  // switch (Mode) {
+  //   case 1:
+  //     Berea.AMGXsolver();
+  //     break;
+  //   case 2:
+  //     Berea.AMGX_permeability_solver(1);
+  //     break;
+  //   case 3:
+  //     Berea.AMGX_permeability_solver();
+  //     break;
+  //   case 4:
+  //     Berea.AMGX_solver_REV();
+  //     break;
+  //   case 5:
+  //     Berea.AMGX_solver_apparent_permeability_REV();
+  //     break;
+  //   case 6:
+  //     Berea.Eigen_solver_per(1);        // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
+  //     break;
+  //   case 7:
+  //     Berea.Eigen_solver_per();        // 1 代表 本征渗透率 计算 没有参数代表
+  //                                      // 表观渗透率计算
+  //     break;
+  //   case 8:
+  //     Berea.AMGX_solver_intri_permeability_REV();
+  //     break;
+  //   case 9:
+  //     Berea.Eigen_solver_intri_REV();
+  //     break;
+  //   case 10:
+  //     Berea.conjugateGradient_solver_per(1);
+  //     break;
+  //   case 11:
+  //     Berea.conjugateGradient_solver_per();
+  //   default:
+  //     break;
   // }
+  PNMsolver* obj = new PNMsolver();        // 动态分配
+  for (int i = 0; i < 50; i++) {
+    obj->AMGX_permeability_solver();
+    delete obj;                   // 手动销毁
+    obj = nullptr;                // 避免悬空指针，可选但推荐
+    obj = new PNMsolver();        // 重新分配内存
+    iii += 1;
+    icount = 0;        // 重置迭代计数器
+  }
   /*产气模拟*/
   // Berea.Eigen_solver();
   // Berea.AMGXsolver();
@@ -7615,14 +7615,26 @@ int main(int argc, char** argv) {
   // Berea.output(double(1), double(1)); // 输出单重孔网
 
   /*计算密度和粘度*/
+  // PNMsolver Berea;
   // ofstream gas_density_visco("density.txt");
-  // for (size_t i = 0; i < 51; i++)
+  // for (size_t i = 0; i < 150; i++)
   // {
-  // 	auto z{Berea.compre(i * 1e6)};
-  // 	// gas_density_visco << i << ";" << i * 1e6 * 0.016 / (z * 8.314 * 400)
-  // << ";" << Berea.visco(i*1e6,z,400) << ";" <<
-  // (porosity-n_max_ad*K_langmuir*i*1e6/(1+K_langmuir*i*1e6)/Rho_ad)*i * 1e6 *
-  // 0.016 / (z * 8.314 * 400) << endl; 	gas_density_visco <<
+  //   auto pressure = i * 0.5e6;  // Pa
+  //   auto tem = 333; // K
+  // 	auto z{Berea.compre(pressure)};
+  //   auto TSPV = 0.066; // cm^3/g
+  //   auto rho_ad = 339.45 / 1000;  // kg/m^3 => g/cm^3
+  //   auto k = 3.05e-8;
+  //   auto rho_g = pressure * 0.016 / (z * 8.314 * tem) / 1000; // kg/m^3 => g/cm^3
+  //   auto Total_V = 0.274088368;  // (cm³/g)
+  //   gas_density_visco << pressure/1e6 << ";" << pressure * 0.016 / (z * 8.314 * tem) << ";" << Berea.visco(pressure,z,tem) << ";" <<
+  //   (porosity-n_max_ad*K_langmuir*pressure/(1+K_langmuir*pressure)/Rho_ad)*pressure * 0.016 / (z * 8.314 * tem) << ";"
+  //   << TSPV * rho_ad * k * pressure / (1 + k * pressure) * (1 - rho_g/rho_ad)<< ";"
+  //   << TSPV * rho_ad * k * pressure / (1 + k * pressure) << ";"
+  //   << Total_V * rho_g + TSPV * rho_ad * k * pressure / (1 + k * pressure) * (1 - rho_g/rho_ad)
+  //   << endl; 
+
+  // gas_density_visco <<
   // K_langmuir*i*1e6/(1+K_langmuir * i *1e6)<< endl;
   // }
   // gas_density_visco.close();
