@@ -56,7 +56,7 @@ using namespace fadbad;
 template <typename T>
 using reverse_mode = B<T>;
 static int FLAG = 0;
-int number_inlet = 1;
+int number_inlet = 980;
 int number_outlet = 1;
 
 std::vector<int> inlet_boundary(number_inlet);
@@ -138,7 +138,7 @@ double viscosity = 2e-5;
 
 namespace Porous_media_property_Hybrid {
 double porosity = 0.1;        // 孔隙率
-double ko = 1;                // 微孔达西渗透率 m^2
+double ko = 1e-15;            // 微孔达西渗透率 m^2
 double micro_radius{3.48e-9};
 }        // namespace Porous_media_property_Hybrid
 
@@ -199,7 +199,7 @@ int Flag_flux_bound{false};
 int Flag_species{false};
 int Flag_vector_data{true};
 int Flag_QIN{false};
-int Flag_QIN_Per{true};
+int Flag_QIN_Per{false};
 
 std::string folderPath;
 std::string Gfilename("Pe_per");
@@ -4396,7 +4396,7 @@ void PNMsolver::AMGX_flux_boundary() {
           << "\t" << "v_side = " << area_side_Q().first * 6e3 << " cm/min" << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6 << "\t"
           << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t"
           << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t";
-  outfile << "permeability = " << (area_main_Q().second + area_side_Q().second) * kong::viscosity * 2000 * voxel_size / (pow(1770 * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-15 << " mD" << endl;
+  outfile << "permeability = " << (area_main_Q().second + area_side_Q().second) * kong::viscosity * 2000 * voxel_size / (pow(1000 * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-15 << " mD" << endl;
   /***********************销毁AMGX***************************/
   AMGX_unpin_memory(ia);
   AMGX_unpin_memory(ja);
@@ -7198,7 +7198,7 @@ int main(int argc, char** argv) {
   // Solver.AMGX_solver_CO2_methane();
   // Solver.AMGX_solver_C_kong_PNM();
   // Solver.AMGX_solver_C_kong_PNM_QIN();
-  Solver.AMGX_flux_boundary_QIN();
-  // Solver.AMGX_flux_boundary();
+  // Solver.AMGX_flux_boundary_QIN();
+  Solver.AMGX_flux_boundary();
   // Solver.EIGEN_GPU_flux_boundary();
 }
