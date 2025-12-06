@@ -2,6 +2,7 @@
 
 # 不忽略src/中的以及当前目录/ 中的 .cpp .c .h .cu .hpp .md CMakeLists.txt Makefile 等文件
 !src/
+!src_new/
 !Makefile
 !CMakeLists.txt
 !*.cpp

@@ -84,10 +84,10 @@ double domain_size_cubic = 384;        // 384 for REV
 double domain_length = 0;
 double T_critical{190.564};            // 甲烷的临界温度 190.564K
 double P_critical{4.599 * 1e6};        // 甲烷的临界压力 4.599MPa
-double Temperature{373};               // 温度 333 373 413
+double Temperature{333};               // 温度 333 373 413
 double Rho_ad{382};                    // kg/m3   382  368  357
-double n_max_ad{Rho_ad * 0.08};                 // kg/m3 44.8  0.08 cm3/g -> 0.08 cm3/cm3 ->  0.08 m3/m3
-double K_langmuir{7.50e-08};               // Pa^(-1)  7.50e-08  5.35e-08   3.92e-08
+double n_max_ad{Rho_ad * 0.1};         // kg/m3 44.8  0.08 cm3/g -> 0.08 cm3/cm3 ->  0.08 m3/m3
+double K_langmuir{7.50e-08};           // Pa^(-1)  7.50e-08  5.35e-08   3.92e-08
 double Ds{2.46e-8};                    // m2/s
 
 double porosity_OMHP1{0.243};           // 含水时 porosity_1 会变
@@ -2667,8 +2667,8 @@ void PNMsolver::Paramentinput() {
             double waste{0};
             porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum >> Pb[i].radius_micro >>
                 Pb[i].porosity >> Pb[i].km;
-                        // porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum;
-            Pb[i].km = pow(ko,2)*0.1 / 32;
+            // porefile >> Pb[i].X >> Pb[i].Y >> Pb[i].Z >> waste >> Pb[i].Radiu >> Pb[i].Half_coord >> Pb[i].half_accum >> Pb[i].type >> Pb[i].full_coord >> Pb[i].full_accum;
+            Pb[i].km = pow(ko, 2) * 0.1 / 32;
             Pb[i].porosity = porosity;
             Pb[i].radius_micro = micro_radius;
             Pb[i].turosity = 1.5;
@@ -3050,6 +3050,7 @@ void PNMsolver::para_cal() {
 
       Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
       Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+
       // Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
       // 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
       // 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
@@ -3108,6 +3109,7 @@ void PNMsolver::para_cal() {
       }
       Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
       Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+
       // Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
       // 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
       // 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
@@ -3184,6 +3186,7 @@ void PNMsolver::para_cal() {
       temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
       Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
       Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+
       // Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
       // 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
       // 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
@@ -5889,6 +5892,7 @@ void PNMsolver::para_cal_in_newton() {
 
       Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
       Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+
       // Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
       // 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
       // 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
@@ -5948,6 +5952,7 @@ void PNMsolver::para_cal_in_newton() {
       }
       Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
       Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+
       // Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
       // 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
       // 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
@@ -6024,6 +6029,7 @@ void PNMsolver::para_cal_in_newton() {
       temp22 = abs(Tb_in[i].Radiu * Ds * n_max_ad * angle2 / length2);
       Tb_in[i].Conductivity = temp1 * temp2 / (temp1 + temp2);
       Tb_in[i].Surface_diff_conduc = temp11 * temp22 / (temp11 + temp22);
+
       // Tb_out << "Tb_in[i].Conductivity\t" << Tb_in[i].Conductivity << "\t"
       // 	<< "Tb_in[i].ID_1\t" << Tb_in[i].ID_1 << "\t"
       // 	<< "Tb_in[i].ID_2\t" << Tb_in[i].ID_2 << "\t"
@@ -6246,6 +6252,12 @@ void PNMsolver::AMGX_permeability_solver() {
   auto duration2 = duration_cast<milliseconds>(stop2 - start1);
 
   outfile << (macro + micro_advec + micro_diff) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size /
+                 (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21
+          << "\t"
+          << (macro)*visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size /
+                 (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21
+          << "\t"
+          << (micro_diff + micro_advec) * visco(inlet_pre + refer_pressure, compre(inlet_pre + refer_pressure), Temperature) * domain_length * voxel_size /
                  (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-21
           << "\t" << (inlet_pre + refer_pressure) / 1e6 << "\t" << duration2.count() / 1000 << "s" << "\t" << endl;
 
@@ -7491,53 +7503,53 @@ int main(int argc, char** argv) {
   }
   // Berea.mean_pore_size();
 
-  // PNMsolver Berea;
-  // switch (Mode) {
-  //   case 1:
-  //     Berea.AMGXsolver();
-  //     break;
-  //   case 2:
-  //     Berea.AMGX_permeability_solver(1);
-  //     break;
-  //   case 3:
-  //     Berea.AMGX_permeability_solver();
-  //     break;
-  //   case 4:
-  //     Berea.AMGX_solver_REV();
-  //     break;
-  //   case 5:
-  //     Berea.AMGX_solver_apparent_permeability_REV();
-  //     break;
-  //   case 6:
-  //     Berea.Eigen_solver_per(1);        // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
-  //     break;
-  //   case 7:
-  //     Berea.Eigen_solver_per();        // 1 代表 本征渗透率 计算 没有参数代表
-  //                                      // 表观渗透率计算
-  //     break;
-  //   case 8:
-  //     Berea.AMGX_solver_intri_permeability_REV();
-  //     break;
-  //   case 9:
-  //     Berea.Eigen_solver_intri_REV();
-  //     break;
-  //   case 10:
-  //     Berea.conjugateGradient_solver_per(1);
-  //     break;
-  //   case 11:
-  //     Berea.conjugateGradient_solver_per();
-  //   default:
-  //     break;
-  // }
-  PNMsolver* obj = new PNMsolver();        // 动态分配
-  for (int i = 0; i < 50; i++) {
-    obj->AMGX_permeability_solver();
-    delete obj;                   // 手动销毁
-    obj = nullptr;                // 避免悬空指针，可选但推荐
-    obj = new PNMsolver();        // 重新分配内存
-    iii += 1;
-    icount = 0;        // 重置迭代计数器
+  PNMsolver Berea;
+  switch (Mode) {
+    case 1:
+      Berea.AMGXsolver();
+      break;
+    case 2:
+      Berea.AMGX_permeability_solver(1);
+      break;
+    case 3:
+      Berea.AMGX_permeability_solver();
+      break;
+    case 4:
+      Berea.AMGX_solver_REV();
+      break;
+    case 5:
+      Berea.AMGX_solver_apparent_permeability_REV();
+      break;
+    case 6:
+      Berea.Eigen_solver_per(1);        // 1 代表 本征渗透率 计算 没有参数代表 表观渗透率计算
+      break;
+    case 7:
+      Berea.Eigen_solver_per();        // 1 代表 本征渗透率 计算 没有参数代表
+                                       // 表观渗透率计算
+      break;
+    case 8:
+      Berea.AMGX_solver_intri_permeability_REV();
+      break;
+    case 9:
+      Berea.Eigen_solver_intri_REV();
+      break;
+    case 10:
+      Berea.conjugateGradient_solver_per(1);
+      break;
+    case 11:
+      Berea.conjugateGradient_solver_per();
+    default:
+      break;
   }
+  // PNMsolver* obj = new PNMsolver();        // 动态分配
+  // for (int i = 0; i < 50; i++) {
+  //   obj->AMGX_permeability_solver();
+  //   delete obj;                   // 手动销毁
+  //   obj = nullptr;                // 避免悬空指针，可选但推荐
+  //   obj = new PNMsolver();        // 重新分配内存
+  //   iii += 1;
+  //   icount = 0;        // 重置迭代计数器
+  // }
   /*产气模拟*/
   // Berea.Eigen_solver();
   // Berea.AMGXsolver();
@@ -7646,7 +7658,7 @@ int main(int argc, char** argv) {
   //   << Total_V * rho_g + TSPV * rho_ad * k * pressure / (1 + k * pressure) * (1 - rho_g/rho_ad) << ";"
   //   << K_apparent_w << ";"
   //   << Ds
-  //   << endl; 
+  //   << endl;
   // }
   // gas_density_visco <<
   // K_langmuir*i*1e6/(1+K_langmuir * i *1e6)<< endl;

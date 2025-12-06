@@ -404,7 +404,7 @@ class GasAdsorptionData {
     double viscos = Average_visco;                                 // pa.s
     double Knusen_number = viscos / pre * sqrt(M_PI * z * 8.314 * Temperature / (2 * 0.016)) / (W);
     double alpha = 1.358 * 2 / M_PI * atan(4 * pow(Knusen_number, 0.4));
-    double beta = 4;
+    double beta = 4;  
     double Slip = (1 + alpha * Knusen_number) * (1 + beta * Knusen_number / (1 + Knusen_number));
     double K_apparent_w = Slip * ko;
     return K_apparent_w;

@@ -5,4 +5,4 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_BUILD_TYPE Debug)
 
-add_subdirectory(src bin)
+add_subdirectory(src_new bin)

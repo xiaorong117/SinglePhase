@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.cpp": "cpp",
+        "*.cu": "cpp",
         "fstream": "cpp",
         "iostream": "cpp",
         "cstdio": "cpp",
@@ -114,15 +115,23 @@
         "expected": "cpp",
         "span": "cpp",
         "variant": "cpp",
-        "stdfloat": "cpp"
+        "stdfloat": "cpp",
+        "barrier": "cpp",
+        "forward_list": "cpp",
+        "ranges": "cpp",
+        "typeindex": "cpp"
     },
-    "C_Cpp.errorSquiggles": "enabledIfIncludesResolve",
+    "C_Cpp.errorSquiggles": "enabled",
     "C_Cpp.dimInactiveRegions": false,
     "python-envs.pythonProjects": [
         {
             "path": "d2l-zh-pytorch-slides",
-            "envManager": "ms-python.python:venv",
-            "packageManager": "ms-python.python:pip"
+            "envManager": "ms-python.python:conda",
+            "packageManager": "ms-python.python:conda"
         }
-    ]
+    ],
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "C_Cpp.formatting": "clangFormat",
+    "editor.formatOnSave": true
 }
