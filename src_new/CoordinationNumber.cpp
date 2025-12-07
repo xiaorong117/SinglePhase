@@ -24,6 +24,7 @@ for (int i = 1; i < 2 * tn; i++) {
 // TB_degub.close();
 
 // full_coord
+
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(int(OMP_PARA))
 #endif
