@@ -38,6 +38,9 @@ class Memory {
   // 关键步骤 4: 防止复制和赋值（现代 C++ 最佳实践）
   Memory(const Memory&) = delete;
   Memory& operator=(const Memory&) = delete;
+
+  void allocateSolverMatrixMemory(const SystemMatrixConfig& config);        // <<< 核心修改：不再依赖全局 Flag，而是依赖 SystemMatrixConfig 策略对象
+
   // 你可能需要一些公共方法来获取分配的指针，例如：
   double* get_DX() const { return dX; }
   double* get_B() const { return B; }

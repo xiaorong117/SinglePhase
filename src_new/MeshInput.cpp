@@ -7,12 +7,14 @@
 #include <cstdlib>         // For abort()
 #include <fstream>         // For std::ifstream, std::ios
 #include <iostream>        // For std::cout, std::endl, std::cerr
-#include <sstream>         // For std::istringstream
-#include <string>          // For std::string, std::string::npos
-#include <vector>          // For std::vector (虽然在您的代码片段中已使用 using namespace std;, 但显式包含是好习惯)
+#include <numeric>
+#include <sstream>        // For std::istringstream
+#include <string>         // For std::string, std::string::npos
+#include <vector>         // For std::vector (虽然在您的代码片段中已使用 using namespace std;, 但显式包含是好习惯)
 
 using namespace std;
 using namespace Solver_property;
+using namespace Porous_media_property_Hybrid;
 // 1. 实现 getInstance()
 // 使用 C++11 局部静态变量的初始化特性，保证线程安全和懒汉式初始化
 MeshInput& MeshInput::getInstance() {
@@ -184,6 +186,149 @@ void MeshInput::loadMeshStructures() {
     }
   }
 }
+
+void MeshInput::calculateMeshTopology() {
+  // 访问 Memory 单例获取 Pb, Tb, Tb_in 等指针
+  Memory& mem = Memory::getInstance();
+  pore* Pb = mem.get_Pb();
+  throatmerge* Tb = mem.get_Tb();
+  throat* Tb_in = mem.get_Tb_in();
+  // merge throat
+  int label = 0;
+  Tb[0].ID_1 = Tb_in[0].ID_1;
+  Tb[0].ID_2 = Tb_in[0].ID_2;
+  Tb[0].Radiu = Tb_in[0].Radiu;
+  for (int i = 1; i < 2 * tn; i++) {
+    if (Tb[label].ID_1 == Tb_in[i].ID_1 && Tb[label].ID_2 == Tb_in[i].ID_2) {
+    } else {
+      label++;
+      Tb[label].ID_1 = Tb_in[i].ID_1;
+      Tb[label].ID_2 = Tb_in[i].ID_2;
+      Tb[label].Radiu = Tb_in[i].Radiu;
+    }
+  }
+
+  // ofstream TB_degub("Tb_debug.txt");
+  // for (size_t i = 0; i < 2 * tn; i++)
+  // {
+  // 	TB_degub << Tb[i].ID_1 << "  " << Tb[i].ID_2 << "  " << endl;
+  // }
+  // TB_degub.close();
+
+  // full_coord
+
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
+  for (int i = 0; i < pn; i++) {
+    Pb[i].full_coord = 0;
+    Pb[i].full_accum = 0;
+  }
+
+  for (int i = 0; i <= label; i++) {
+    Pb[Tb[i].ID_1].full_coord += 1;
+  }
+
+  Pb[0].full_accum = Pb[0].full_coord;
+
+  for (int i = 1; i < pn; i++) {
+    Pb[i].full_accum = Pb[i - 1].full_accum + Pb[i].full_coord;
+  }
+
+  // ofstream Pb_coord("Pb_coord.txt");
+  // for (size_t i = 0; i < pn; i++)
+  // {
+  // 	Pb_coord << Pb[i].full_coord << "  " << Pb[i].full_accum << "  " <<
+  // endl;
+  // }
+  // Pb_coord.close();
+
+#ifdef _OPENMP
+  double end = omp_get_wtime();
+  printf("para_cal diff = %.16g\n", end - start);
+#endif
+
+  coolist.resize(op + mp);         // 非进出口全配位数
+  coolist5.resize(op + mp);        // 只有进出口的全配位数
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
+  for (int i = inlet; i < op + inlet; i++) {
+    int counter{0};
+    for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++) {
+      if ((inlet <= Tb[j].ID_2) && Tb[j].ID_2 < (op + inlet)) {
+        coolist[i - inlet] += 1;
+        counter++;
+      } else if ((macro_n + m_inlet <= Tb[j].ID_2) && Tb[j].ID_2 < (macro_n + m_inlet + mp)) {
+        coolist[i - inlet] += 1;
+        counter++;
+      } else if (Tb[j].ID_2 < inlet) {        // 连接的是大孔进口
+        coolist5[i - inlet] += 1;
+        counter++;
+      } else if (macro_n <= Tb[j].ID_2 && Tb[j].ID_2 < macro_n + m_inlet) {        // 连接的是微孔进口
+        coolist5[i - inlet] += 1;
+        counter++;
+      } else {
+        counter++;
+      }
+    }
+  }
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
+  for (int i = macro_n + m_inlet; i < pn - m_outlet; i++) {
+    int counter{0};
+    for (int j = Pb[i].full_accum - Pb[i].full_coord; j < Pb[i].full_accum; j++) {
+      if ((inlet <= Tb[j].ID_2) && Tb[j].ID_2 < (op + inlet)) {
+        coolist[i - para_macro] += 1;
+        counter++;
+      } else if ((macro_n + m_inlet <= Tb[j].ID_2) && Tb[j].ID_2 < (macro_n + m_inlet + mp)) {
+        coolist[i - para_macro] += 1;
+        counter++;
+      } else if (Tb[j].ID_2 < inlet) {        // 连接的是大孔进口
+        coolist5[i - para_macro] += 1;
+        counter++;
+      } else if (macro_n <= Tb[j].ID_2 && Tb[j].ID_2 < macro_n + m_inlet) {        // 连接的是微孔进口
+        coolist5[i - para_macro] += 1;
+        counter++;
+      } else {
+        counter++;
+      }
+    }
+  }
+
+  coolist2.resize(op + mp);        // 非进出口累计全配位数
+  coolist6.resize(op + mp);        // 累计的只有进出口的全配位数
+
+  if (Flag_vector_data == true) {
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(int(OMP_PARA))
+#endif
+    for (size_t i = 0; i < coolist2.size(); i++) {
+      std::vector<int>::iterator it = coolist.begin() + i;
+      std::vector<int>::iterator it_1 = coolist5.begin() + i;
+      coolist2[i] = accumulate(coolist.begin(), it, 0);
+      coolist6[i] = accumulate(coolist5.begin(), it_1, 0);
+    }
+    // 输出vector到文件
+    const std::string filename = "vector_data.txt";
+    const std::string filename_1 = "vector_data_1.txt";
+    writeVectorToFile(coolist2, filename);
+    writeVectorToFile(coolist6, filename_1);
+  } else {
+    const std::string filename = "vector_data.txt";
+    const std::string filename_1 = "vector_data_1.txt";
+    // 从文件读取vector
+    std::vector<int> newVec = readVectorFromFile(filename);
+    std::vector<int> newVec_1 = readVectorFromFile(filename_1);
+
+    coolist2 = newVec;
+    coolist6 = newVec_1;
+  }
+
+  NA = accumulate(coolist.begin(), coolist.end(), 0) + op + mp;
+
+};        // <<< 新增：用于执行喉道合并和配位数计算
 
 MeshInput::MeshInput() {
   this->pn = 0;

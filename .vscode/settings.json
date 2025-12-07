@@ -119,7 +119,8 @@
         "barrier": "cpp",
         "forward_list": "cpp",
         "ranges": "cpp",
-        "typeindex": "cpp"
+        "typeindex": "cpp",
+        "source_location": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabled",
     "C_Cpp.dimInactiveRegions": false,
@@ -130,8 +131,10 @@
             "packageManager": "ms-python.python:conda"
         }
     ],
-    "python-envs.defaultEnvManager": "ms-python.python:conda",
-    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python-envs.defaultPackageManager": "ms-python.python:pip",
     "C_Cpp.formatting": "clangFormat",
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "xaver.clang-format",
+    "notebook.defaultFormatter": "xaver.clang-format"
 }

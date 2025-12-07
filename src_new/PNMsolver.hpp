@@ -5,7 +5,7 @@ class PNMsolver        // 定义类
 {
  public:
   PNMsolver(){};
-  
+
   int conjugateGradient_solver(int iters_, double tol_);
 
   void memory();        // 动态分配存储器
@@ -36,7 +36,6 @@ class PNMsolver        // 定义类
   reverse_mode<double> conductivity_co2_DISPERSION_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int pore_id, int throat_id);
 
   void para_cal_kong();
-
 
   void CO2_methane_matrix();
   void kong_matrix();
@@ -82,9 +81,7 @@ class PNMsolver        // 定义类
   double micro_free_mass_loss();
   double micro_ad_mass_loss();
 
-
   void output_co2_methane(int n);
-
 
   void AMGX_solver_CO2_methane();        // 混合模型二氧化碳驱替甲烷
   void AMGX_solver_C_kong_PNM();         // kong
@@ -100,12 +97,6 @@ class PNMsolver        // 定义类
   void Eigen_subroutine_per(Eigen::SparseMatrix<double, Eigen::RowMajor>&, Eigen::VectorXd&);
 
  private:
-
-  vector<int> coolist;
-  vector<int> coolist2;
-  vector<int> coolist5;
-  vector<int> coolist6;
-
   double error;
   int time_step = Time_step;
   double time_all = pyhsic_time;
@@ -147,5 +138,5 @@ class PNMsolver        // 定义类
   int iterations_number;
 
  public:
-  ~PNMsolver(){}        // 析构函数，释放动态存储
+  ~PNMsolver() {}        // 析构函数，释放动态存储
 };

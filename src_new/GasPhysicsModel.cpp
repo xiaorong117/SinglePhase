@@ -1,5 +1,8 @@
-#include "Physic_property_cal.hpp"
+#include "GasPhysicsModel.hpp"
+#include <omp.h>
+#include <cmath>
 #include "Globals.hpp"
+#include "MeshInput.hpp"
 // For gsl
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_math.h>
@@ -14,11 +17,42 @@ using namespace Porous_media_property_PNM;
 using namespace Physical_property;
 using namespace Solver_property;
 
-void Physical_property_cal::Function_DS(double pressure) {
+// 1. 初始化实现
+void GasPhysicsModel::initialize() {
+  Memory& mem = Memory::getInstance();
+  MeshInput& mesh = MeshInput::getInstance();
+  pore* Pb = mem.get_Pb();
+  int pn = mesh.get_pn();
+
+  // 初始化体积、粘度等 (复用你之前的逻辑)
+#pragma omp parallel for
+  for (int i = 0; i < pn; i++) {
+    Pb[i].volume = 4 * My_const::pi * std::pow(Pb[i].Radiu, 3) / 3;
+    Pb[i].visco = Fluid_property::kong::viscosity;        // 初始粘度
+    Pb[i].compre = 1.0;                                   // 初始压缩系数
+    Pb[i].visco_old = Pb[i].visco;
+    Pb[i].compre_old = Pb[i].compre;
+  }
+}
+
+// 2. 更新实现 (这是你新需求的核心)
+void GasPhysicsModel::updateProperties() {
+  Memory& mem = Memory::getInstance();
+  MeshInput& mesh = MeshInput::getInstance();
+  pore* Pb = mem.get_Pb();
+  int pn = mesh.get_pn();
+
+  // 示例：假设粘度随压力变化 (这里写你的物理公式)
+#pragma omp parallel for
+  for (int i = 0; i < pn; i++) {}
+}
+
+// 辅助函数可以设为私有
+void GasPhysicsModel::Function_DS(double pressure) {
   Ds = (Ds_LIST[6] - Ds_LIST[0]) / (50e6 - 1e6) * (pressure - 1e6) + Ds_LIST[0];
 };
 
-double Physical_property_cal::compre(double pressure) {
+double GasPhysicsModel::compre(double pressure) {
   double Tr = Temperature / T_critical;
   double Pr = pressure / P_critical;
 
@@ -41,7 +75,7 @@ double Physical_property_cal::compre(double pressure) {
   }
 };
 
-double Physical_property_cal::visco(double p, double z, double T) {
+double GasPhysicsModel::visco(double p, double z, double T) {
   p = 0.00014504 * p;                                                             // pa -> psi
   T = 1.8 * T;                                                                    // k -> Rankin
   double density_of_gas = 28.967 * 0.5537 * p / (z * 10.732 * T) / 62.428;        // g/cm3
@@ -52,14 +86,14 @@ double Physical_property_cal::visco(double p, double z, double T) {
   return 1e-7 * K * exp(X * pow(density_of_gas, Y));        // cp -> Pa s
 };
 
-double Physical_property_cal::Function_Slip(double knusen) {
+double GasPhysicsModel::Function_Slip(double knusen) {
   double alpha_om = 1.358 * 2 / pi * atan(4 * pow(knusen, 0.4));
   double beta_om = 4;
   double Slip_om = (1 + alpha_om * knusen) * (1 + beta_om * knusen / (1 + knusen));
   return Slip_om;
 }
 
-double Physical_property_cal::Function_Slip_clay(double knusen) {
+double GasPhysicsModel::Function_Slip_clay(double knusen) {
   double alpha_c = 1.5272 * 2 / pi * atan(2.5 * pow(knusen, 0.5));
   double beta_c = 6;
   double Slip_c = (1 + alpha_c * knusen) * (1 + beta_c * knusen / (1 + knusen));

@@ -17,7 +17,7 @@ InitialCondition& InitialCondition::getInstance() {
   return instance;
 }        // namespace InitialCondition::getInstance()
 
-InitialCondition::InitialCondition() {};
+InitialCondition::InitialCondition(){};
 
 void InitialCondition::setInitialValues() {
   double start = omp_get_wtime();

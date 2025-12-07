@@ -7,10 +7,10 @@
 #include <cstdlib>         // For abort()
 #include <fstream>         // For std::ifstream, std::ios
 #include <iostream>        // For std::cout, std::endl, std::cerr
-#include <sstream>         // For std::istringstream
-#include <string>          // For std::string, std::string::npos
-#include <vector>          // For std::vector (虽然在您的代码片段中已使用 using namespace std;, 但显式包含是好习惯)
-
+#include <numeric>
+#include <sstream>        // For std::istringstream
+#include <string>         // For std::string, std::string::npos
+#include <vector>         // For std::vector (虽然在您的代码片段中已使用 using namespace std;, 但显式包含是好习惯)
 using namespace Solver_property;
 using namespace std;
 
@@ -25,6 +25,103 @@ Memory& Memory::getInstance() {
   static Memory instance;
   return instance;
 }
+
+void Memory::allocateSolverMatrixMemory() {
+  MeshInput& mesh_data = MeshInput::getInstance();
+
+  // 1. 获取 MeshInput (用于获取 pn, tn, inlet, op, mp 等)
+  MeshInput& mesh_data = MeshInput::getInstance();
+
+  // 2. 根据策略对象获取所需的总变量数 (矩阵行/列数)
+  const int n_variables = config.get_n_variables(mesh_data);
+
+  // 3. 根据策略对象计算所需的非零元素总数 (NNZ)
+  const int total_nnz = config.calculate_nnz(mesh_data);
+
+  std::cout << "Allocating solver matrix memory..." << std::endl;
+  std::cout << "  - N_Variables (Rows/Cols): " << n_variables << std::endl;
+  std::cout << "  - NNZ (Non-Zero Entries):  " << total_nnz << std::endl;
+
+  // 4. 动态分配内存
+  // 删除旧内存 (防止内存泄漏)
+  // ... (略去现有代码中的 delete[] 逻辑)
+
+  // 分配 dX 和 B 向量 (大小为 N_Variables)
+  dX = new double[n_variables];
+  B = new double[n_variables];
+
+  // 分配 CSR/COO 矩阵所需的内存
+  // ia (行偏移) 大小为 N_Variables + 1
+  ia = new int[n_variables + 1];
+
+  // ja (列索引), a (值), COO_A (COO格式) 大小为 NNZ
+  ja = new int[total_nnz];
+  a = new double[total_nnz];
+  COO_A = new Acoo[total_nnz];
+
+  // ... 其他分配逻辑 (如 d_csr_offsets 等)
+  std::cout << "Solver matrix memory allocation complete." << std::endl;
+
+  const int op = mesh_data.get_op();
+  const int mp = mesh_data.get_mp();
+  const int inlet = mesh_data.get_inlet();
+  const int m_inlet = mesh_data.get_m_inlet();
+  const std::vector<int>& coolist = mesh_data.get_coolist();
+  const int NA = mesh_data.get_NA();
+
+  if (Flag_species == true) {
+    /*我最开始写的kong的transport程序，没有考虑流量边界 */
+    dX = new double[(op + mp) * 3];
+    B = new double[(op + mp) * 3];
+
+    ia = new int[(op + mp) * 3 + 1];
+    ja = new int[NA * 5];
+
+    a = new double[NA * 5];
+
+    COO_A = new Acoo[NA * 5];
+  } else if (Flag_QIN_trans == true)
+  /*加上了Qin说的Neumann边界条件之后，变量数量改变了，transport。*/
+  {
+    dX = new double[(op + mp) * 3 + 2];
+    B = new double[(op + mp) * 3 + 2];
+
+    int append_nnz = (inlet + m_inlet) * 4 + 2;
+
+    ia = new int[(op + mp) * 3 + 1 + 2];
+    ja = new int[NA * 5 + append_nnz];
+
+    a = new double[NA * 5 + append_nnz];
+
+    COO_A = new Acoo[NA * 5 + append_nnz];
+  } else if (Flag_QIN_Per == true)
+  /*加上了Qin说的Neumann边界条件之后，变量数量改变了， 求解压力场。*/
+  {
+    dX = new double[(op + mp) + 2];
+    B = new double[(op + mp) + 2];
+
+    ia = new int[(op + mp) + 1 + 2];
+
+    int append_nnz = (inlet + m_inlet) * 2 + 2;
+
+    ja = new int[NA + append_nnz];
+
+    a = new double[NA + append_nnz];
+
+    COO_A = new Acoo[NA + append_nnz];
+  } else {
+    /*本征渗透率计算*/
+    dX = new double[(op + mp)];
+    B = new double[(op + mp)];
+
+    ia = new int[(op + mp) + 1];
+    ja = new int[NA];
+
+    a = new double[NA];
+
+    COO_A = new Acoo[NA];
+  }
+};
 
 Memory::Memory() {
   // 初始化所有指针为 nullptr (如果你没有在声明时初始化)
