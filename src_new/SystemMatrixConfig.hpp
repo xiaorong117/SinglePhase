@@ -16,9 +16,6 @@ class SystemMatrixConfig {
 
   // 2. 估算非零元素总数 (NNZ)
   virtual int calculate_nnz(const MeshInput& mesh) const = 0;
-
-  // 3. (可选) 获取每个孔隙节点的自由度 (DOF)
-  virtual int get_dof_per_pore() const = 0;
 };
 
 #endif        // SYSTEM_MATRIX_CONFIG_HPP

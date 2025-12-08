@@ -25,6 +25,8 @@ void GasPhysicsModel::initialize() {
   int pn = mesh.get_pn();
 
   // 初始化体积、粘度等 (复用你之前的逻辑)
+  // Function_DS(background_pressure);
+
 #pragma omp parallel for
   for (int i = 0; i < pn; i++) {
     Pb[i].volume = 4 * My_const::pi * std::pow(Pb[i].Radiu, 3) / 3;
@@ -43,8 +45,29 @@ void GasPhysicsModel::updateProperties() {
   int pn = mesh.get_pn();
 
   // 示例：假设粘度随压力变化 (这里写你的物理公式)
-#pragma omp parallel for
-  for (int i = 0; i < pn; i++) {}
+  // Function_DS(background_pressure);
+
+  // #pragma omp parallel for
+  //   for (int i = 0; i < pn; i++) {
+  //     // 1. 存储上一步的旧值
+  //     Pb[i].visco_old = Pb[i].visco;
+  //     Pb[i].compre_old = Pb[i].compre;
+
+  //     // 2. 计算新的压缩系数 (Z因子)
+  //     // compre(pressure) 函数返回的是 Z 因子
+  //     double Z_factor = compre(Pb[i].pressure);
+
+  //     // 3. 计算新的粘度
+  //     // visco(p, z, T)
+  //     // 假设 Temperature 是通过 Globals.hpp 引入的全局常量
+  //     double new_visco = visco(Pb[i].pressure, Z_factor, Temperature);
+
+  //     // 4. 更新孔隙节点的属性
+  //     Pb[i].compre = Z_factor;
+  //     Pb[i].visco = new_visco;
+
+  //     // 注意：Function_DS 是 void 且使用全局 Ds 变量，不应在并行循环内针对每个孔隙调用。
+  //   }
 }
 
 // 辅助函数可以设为私有

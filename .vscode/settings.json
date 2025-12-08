@@ -120,15 +120,16 @@
         "forward_list": "cpp",
         "ranges": "cpp",
         "typeindex": "cpp",
-        "source_location": "cpp"
+        "source_location": "cpp",
+        "jacobianassembler_liquidmatrixconfig_2transport_dirichletcpp": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabled",
     "C_Cpp.dimInactiveRegions": false,
     "python-envs.pythonProjects": [
         {
             "path": "d2l-zh-pytorch-slides",
-            "envManager": "ms-python.python:conda",
-            "packageManager": "ms-python.python:conda"
+            "envManager": "ms-python.python:system",
+            "packageManager": "ms-python.python:pip"
         }
     ],
     "python-envs.defaultEnvManager": "ms-python.python:system",

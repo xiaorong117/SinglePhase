@@ -7211,9 +7211,10 @@ int main(int argc, char** argv) {
   PNMsolver Solver;
 
   // Solver.AMGX_solver_CO2_methane();
-  Solver.AMGX_solver_C_kong_PNM();        // 这个应该是使用Flag_velocity_bound == flase来进行Dirichlet boundary的transport
-  // Solver.AMGX_solver_C_kong_PNM_Neumann_boundary();              // 这个因该是 Neumann_boundary 下的transport
-  // Solver.AMGX_Neumann_boundary_QIN_incompressible();          // 这个应该是使用Neumann boundary condition的不可压缩流动模拟，求解压力场
-  // Solver.AMGX_velocity_boundary_incompressible_per();         // 这个应该是用来算渗透率的程序,不过用的是流速边界条件(已经弃用了), 可以通过Flag_velocity_bound == flase，来进行Dirichlet boundary下的渗透率计算
+  // Solver.AMGX_solver_C_kong_PNM();        // 这个应该是使用Flag_velocity_bound == flase来进行Dirichlet boundary的transport
+  // Solver.AMGX_solver_C_kong_PNM_Neumann_boundary();        // 这个因该是 Neumann_boundary 下的transport
+  // Solver.AMGX_Neumann_boundary_QIN_incompressible();        // 这个应该是使用Neumann boundary condition的不可压缩流动模拟，求解压力场
+  Solver
+      .AMGX_velocity_boundary_incompressible_per();        // 这个应该是用来算渗透率的程序,不过用的是流速边界条件(已经弃用了), 可以通过Flag_velocity_bound == flase，来进行Dirichlet boundary下的渗透率计算
   // Solver.EIGEN_GPU_velocity_boundary_incompressible_per();    // 这个应该是用来算渗透率的程序，只不过求解器使用了EIGEN和自己写的GPU_Solver, 也可以通过Flag_velocity_bound == flase，来进行Dirichlet boundary下的渗透率计算
 }

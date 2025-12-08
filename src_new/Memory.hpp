@@ -1,5 +1,7 @@
 // Memory.hpp
 #include "Globals.hpp"
+#include "SystemMatrixConfig.hpp"
+
 #ifndef MEMORY_HPP
 #define MEMORY_HPP
 

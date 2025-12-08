@@ -26,9 +26,7 @@ Memory& Memory::getInstance() {
   return instance;
 }
 
-void Memory::allocateSolverMatrixMemory() {
-  MeshInput& mesh_data = MeshInput::getInstance();
-
+void Memory::allocateSolverMatrixMemory(const SystemMatrixConfig& config) {
   // 1. 获取 MeshInput (用于获取 pn, tn, inlet, op, mp 等)
   MeshInput& mesh_data = MeshInput::getInstance();
 
@@ -61,66 +59,6 @@ void Memory::allocateSolverMatrixMemory() {
 
   // ... 其他分配逻辑 (如 d_csr_offsets 等)
   std::cout << "Solver matrix memory allocation complete." << std::endl;
-
-  const int op = mesh_data.get_op();
-  const int mp = mesh_data.get_mp();
-  const int inlet = mesh_data.get_inlet();
-  const int m_inlet = mesh_data.get_m_inlet();
-  const std::vector<int>& coolist = mesh_data.get_coolist();
-  const int NA = mesh_data.get_NA();
-
-  if (Flag_species == true) {
-    /*我最开始写的kong的transport程序，没有考虑流量边界 */
-    dX = new double[(op + mp) * 3];
-    B = new double[(op + mp) * 3];
-
-    ia = new int[(op + mp) * 3 + 1];
-    ja = new int[NA * 5];
-
-    a = new double[NA * 5];
-
-    COO_A = new Acoo[NA * 5];
-  } else if (Flag_QIN_trans == true)
-  /*加上了Qin说的Neumann边界条件之后，变量数量改变了，transport。*/
-  {
-    dX = new double[(op + mp) * 3 + 2];
-    B = new double[(op + mp) * 3 + 2];
-
-    int append_nnz = (inlet + m_inlet) * 4 + 2;
-
-    ia = new int[(op + mp) * 3 + 1 + 2];
-    ja = new int[NA * 5 + append_nnz];
-
-    a = new double[NA * 5 + append_nnz];
-
-    COO_A = new Acoo[NA * 5 + append_nnz];
-  } else if (Flag_QIN_Per == true)
-  /*加上了Qin说的Neumann边界条件之后，变量数量改变了， 求解压力场。*/
-  {
-    dX = new double[(op + mp) + 2];
-    B = new double[(op + mp) + 2];
-
-    ia = new int[(op + mp) + 1 + 2];
-
-    int append_nnz = (inlet + m_inlet) * 2 + 2;
-
-    ja = new int[NA + append_nnz];
-
-    a = new double[NA + append_nnz];
-
-    COO_A = new Acoo[NA + append_nnz];
-  } else {
-    /*本征渗透率计算*/
-    dX = new double[(op + mp)];
-    B = new double[(op + mp)];
-
-    ia = new int[(op + mp) + 1];
-    ja = new int[NA];
-
-    a = new double[NA];
-
-    COO_A = new Acoo[NA];
-  }
 };
 
 Memory::Memory() {
