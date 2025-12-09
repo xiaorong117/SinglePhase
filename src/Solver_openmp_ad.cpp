@@ -1,4 +1,4 @@
-﻿#include <dirent.h>
+#include <dirent.h>
 #include <math.h>
 #include <omp.h>
 #include <sys/types.h>
@@ -243,8 +243,10 @@ struct pore {
   double mole_frac_co2_old{0};
   double C1{0};
   double C2{0};
+  double C3{0};
   double C1_old{0};
   double C2_old{0};
+  double C3_old{0};
   double volume{0};
   double compre{0};
   double compre_old{0};
@@ -346,6 +348,8 @@ class PNMsolver        // 定义类
   void AMGX_solver_C_kong_PNM();         // kong
 
   void AMGX_solver_C_kong_PNM_Neumann_boundary();
+
+  void KONG_Update_parameters();
 
   void AMGX_velocity_boundary_incompressible_per();
 
@@ -4420,6 +4424,22 @@ void PNMsolver::AMGX_velocity_boundary_incompressible_per() {
   // ************ end AMGX solver ***********
 }
 
+void PNMsolver::KONG_Update_parameters() {
+  /*更新内部所有孔的C1，C2和C3*/
+  for (int i = inlet; i < op + inlet; i++) {
+    auto X = std::min(Pb[i].C1, Pb[i].C2);
+    Pb[i].C1 = Pb[i].C1 - X;
+    Pb[i].C2 = Pb[i].C2 - X;
+    Pb[i].C3 = Pb[i].C3 + X;
+  }
+  for (int i = macro_n + m_inlet; i < pn - m_outlet; i++) {
+    auto X = std::min(Pb[i].C1, Pb[i].C2);
+    Pb[i].C1 = Pb[i].C1 - X;
+    Pb[i].C2 = Pb[i].C2 - X;
+    Pb[i].C3 = Pb[i].C3 + X;
+  }
+}
+
 void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
   Flag_eigen = false;
   Flag_Hybrid = false;
@@ -4496,6 +4516,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
     iteration_number = 1;
 
     time_all += dt;
+    KONG_Update_parameters();
 
     auto stop2 = high_resolution_clock::now();
     auto duration2 = duration_cast<milliseconds>(stop2 - start1);
@@ -5076,6 +5097,47 @@ void PNMsolver::initial_condition(int flag) {
   file.close();
 }
 
+void find_z_bounds_ptr(const pore* Pb, int pn, double& Z_min, double& Z_max) {
+  if (pn <= 0 || Pb == nullptr) {
+    Z_min = 0.0;
+    Z_max = 0.0;
+    return;
+  }
+
+  // 原始指针 Pb 可以作为起始迭代器 (begin)
+  const pore* begin = Pb;
+  // 结束迭代器 (end) 是起始地址 + 元素数量
+  const pore* end = Pb + pn;
+
+  // 1. 查找 Z 坐标的最小值
+  // std::min_element 接受任意迭代器范围 [begin, end)
+  auto min_it = std::min_element(begin, end, [](const pore& a, const pore& b) { return a.Z < b.Z; });
+  Z_min = min_it->Z;
+
+  // 2. 查找 Z 坐标的最大值
+  auto max_it = std::max_element(begin, end, [](const pore& a, const pore& b) { return a.Z < b.Z; });
+  Z_max = max_it->Z;
+}
+
+std::vector<double> calculate_split_planes(double Z_min, double Z_max, int num_splits = 20) {
+  std::vector<double> split_planes;
+
+  if (std::abs(Z_max - Z_min) < 1e-9) {
+    std::cerr << "Warning: Z_max and Z_min are too close to perform splits." << std::endl;
+    return split_planes;
+  }
+
+  double Delta_Z = (Z_max - Z_min) / num_splits;
+  int num_planes = num_splits - 1;        // 分割 20 份需要 19 个分隔面
+
+  for (int k = 1; k <= num_planes; ++k) {
+    double Z_k = Z_min + k * Delta_Z;
+    split_planes.push_back(Z_k);
+  }
+
+  return split_planes;
+}
+
 void PNMsolver::Paramentinput() {
   cout << "亚分辨区域均质" << endl;
   std::vector<std::string> fileList = getFilesInFolder(folderPath);
@@ -5123,6 +5185,21 @@ void PNMsolver::Paramentinput() {
         }
         porefile.close();
         inlet_coo.close();
+
+        double Z_min, Z_max;
+        find_z_bounds_ptr(Pb, pn, Z_min, Z_max);
+
+        std::cout << "--- Z 坐标范围 ---" << std::endl;
+        std::cout << "Z_min: " << Z_min << std::endl;
+        std::cout << "Z_max: " << Z_max << std::endl;
+
+        std::vector<double> plane_coords = calculate_split_planes(Z_min, Z_max, 20);
+        std::cout << "\n--- Z 轴分隔面坐标 (共 19 个) ---" << std::endl;
+        double Delta_Z = (Z_max - Z_min) / 20.0;
+        std::cout << "每份间隔 (Delta Z): " << Delta_Z << std::endl;
+        for (size_t i = 0; i < plane_coords.size(); ++i) {
+          std::cout << "分隔面 " << i + 1 << ": " << plane_coords[i] << std::endl;
+        }
 
         // int count = 980;
         // string filename{"filtered_inlet_coo"};
@@ -7212,9 +7289,8 @@ int main(int argc, char** argv) {
 
   // Solver.AMGX_solver_CO2_methane();
   // Solver.AMGX_solver_C_kong_PNM();        // 这个应该是使用Flag_velocity_bound == flase来进行Dirichlet boundary的transport
-  // Solver.AMGX_solver_C_kong_PNM_Neumann_boundary();        // 这个因该是 Neumann_boundary 下的transport
+  Solver.AMGX_solver_C_kong_PNM_Neumann_boundary();        // 这个因该是 Neumann_boundary 下的transport
   // Solver.AMGX_Neumann_boundary_QIN_incompressible();        // 这个应该是使用Neumann boundary condition的不可压缩流动模拟，求解压力场
-  Solver
-      .AMGX_velocity_boundary_incompressible_per();        // 这个应该是用来算渗透率的程序,不过用的是流速边界条件(已经弃用了), 可以通过Flag_velocity_bound == flase，来进行Dirichlet boundary下的渗透率计算
+  // Solver.AMGX_velocity_boundary_incompressible_per();        // 这个应该是用来算渗透率的程序,不过用的是流速边界条件(已经弃用了), 可以通过Flag_velocity_bound == flase，来进行Dirichlet boundary下的渗透率计算
   // Solver.EIGEN_GPU_velocity_boundary_incompressible_per();    // 这个应该是用来算渗透率的程序，只不过求解器使用了EIGEN和自己写的GPU_Solver, 也可以通过Flag_velocity_bound == flase，来进行Dirichlet boundary下的渗透率计算
 }
