@@ -1,4 +1,4 @@
-#include <dirent.h>
+﻿#include <dirent.h>
 #include <math.h>
 #include <omp.h>
 #include <sys/types.h>
@@ -58,6 +58,9 @@ using reverse_mode = B<T>;
 static int FLAG = 0;
 int number_inlet = 453;
 int number_outlet = 1;
+
+double Z_min, Z_max;
+std::vector<double> plane_coords{0};
 
 std::vector<int> inlet_boundary(number_inlet);
 // 输出vector到文件
@@ -127,10 +130,10 @@ double K_langmuir_ch4{1.7e-7};        // Pa^(-1)
 namespace kong {
 double D_dispersion_macro{0.85e-9};        // 237.885 / 100 for 1st,  233.65 / 100 for
                                            // 2nd, 396.055 / 100 for 3rd.
-double D_dispersion_micro{0.05 * D_dispersion_macro};
-double inlet_C1 = 10;
-double outlet_C1 = 0.01;
-double inlet_C2 = 10;
+double D_dispersion_micro{0.5 * D_dispersion_macro};
+double inlet_C1 = 0.01;
+double outlet_C1 = 0;
+double inlet_C2 = 0.01;
 double outlet_C2 = 0.01;
 double viscosity = 2e-5;
 }        // namespace kong
@@ -198,7 +201,7 @@ int flag1 = 2;
 int Flag_velocity_bound{false};        // 流速边界
 int Flag_species{false};               // 我最开始考虑的，Dirichlet boundary condition 下的transport
 int Flag_vector_data{false};           // 输出不考虑进出口的累计全配位文件和只考虑进出口的累计全配位数 vector
-int Flag_QIN_trans{false};             // Qin 的Neumann边界条件下的双组分transport模拟
+int Flag_QIN_trans{true};              // Qin 的Neumann边界条件下的双组分transport模拟
 int Flag_QIN_Per{false};               // Qin 的Neumann边界条件下的渗透率模拟
 
 std::string folderPath;
@@ -343,13 +346,13 @@ using namespace Solver_property;
 class PNMsolver        // 定义类
 {
  public:
-  PNMsolver(){};
+  PNMsolver() {};
   void AMGX_solver_CO2_methane();        // 混合模型二氧化碳驱替甲烷
   void AMGX_solver_C_kong_PNM();         // kong
 
   void AMGX_solver_C_kong_PNM_Neumann_boundary();
 
-  void KONG_Update_parameters();
+  void KONG_Update_parameters(int);
 
   void AMGX_velocity_boundary_incompressible_per();
 
@@ -1584,7 +1587,7 @@ reverse_mode<double> PNMsolver::func_append_kong1(reverse_mode<double>& Pi, reve
       iCounter1++;
     }
   }
-  return RETURN - 1.02 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.08 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reverse_mode<double>* Pjs) {
@@ -4424,7 +4427,25 @@ void PNMsolver::AMGX_velocity_boundary_incompressible_per() {
   // ************ end AMGX solver ***********
 }
 
-void PNMsolver::KONG_Update_parameters() {
+struct SliceInfo {
+  double Z_start;        // 切片的起始 Z 坐标
+  double Z_end;          // 切片的结束 Z 坐标
+  double Vi{0};
+  double Mass_A{0};
+  double Mass_B{0};
+  double Mass_C{0};
+  double Mean_concentration_A{0};
+  double Mean_concentration_B{0};
+  double Mean_concentration_C{0};
+  double concentration_variance_A{0};
+  double concentration_variance_B{0};
+  double concentration_variance_C{0};
+  double concentration_entropy_A{0};
+  double concentration_entropy_B{0};
+  double concentration_entropy_C{0};
+  int pore_count{0};
+};
+void PNMsolver::KONG_Update_parameters(int timestep) {
   /*更新内部所有孔的C1，C2和C3*/
   for (int i = inlet; i < op + inlet; i++) {
     auto X = std::min(Pb[i].C1, Pb[i].C2);
@@ -4438,6 +4459,113 @@ void PNMsolver::KONG_Update_parameters() {
     Pb[i].C2 = Pb[i].C2 - X;
     Pb[i].C3 = Pb[i].C3 + X;
   }
+  const int NUM_SLICES = 20;
+  std::vector<SliceInfo> slices(NUM_SLICES);
+  double Delta_Z = (Z_max - Z_min) / NUM_SLICES;
+  for (int i = 0; i < NUM_SLICES; ++i) {
+    slices[i].Z_start = Z_min + i * Delta_Z;
+    slices[i].Z_end = Z_min + (i + 1) * Delta_Z;
+  }
+
+  for (int i = 0; i < pn; ++i) {
+    double Z_offset = Pb[i].Z - Z_min;
+
+    // 计算索引
+    int slice_index = static_cast<int>(std::floor(Z_offset / Delta_Z));
+    // ofstream slice_index_out("slice_index_out.txt", ios::app);
+
+    // 边界处理：确保 Z=Zmax 的孔隙落在最后一个区间 (索引 NUM_SLICES - 1)
+    if (slice_index >= NUM_SLICES) {
+      slice_index = NUM_SLICES - 1;
+    }
+    // slice_index_out << "i:" << i << "\tPb[i].Z:" << Pb[i].Z << "\tZ_min:" << Z_min << "\tZ_offset:" << Z_offset << "\tDelta_Z:" << Delta_Z << "\tslice_index:" << slice_index << endl;
+
+    // 统计和聚合数据
+    slices[slice_index].pore_count++;
+    slices[slice_index].Vi += Pb[i].volume;
+    slices[slice_index].Mass_A += Pb[i].volume * Pb[i].C1;
+    slices[slice_index].Mass_B += Pb[i].volume * Pb[i].C2;
+    slices[slice_index].Mass_C += Pb[i].volume * Pb[i].C3;
+  }
+
+  for (size_t i = 0; i < 20; i++) {
+    int slice_index = i;
+    slices[slice_index].Mean_concentration_A = slices[slice_index].Mass_A / slices[slice_index].Vi;
+    slices[slice_index].Mean_concentration_B = slices[slice_index].Mass_B / slices[slice_index].Vi;
+    slices[slice_index].Mean_concentration_C = slices[slice_index].Mass_C / slices[slice_index].Vi;
+  }
+
+  for (int i = 0; i < pn; ++i) {
+    double Z_offset = Pb[i].Z - Z_min;
+
+    // 计算索引
+    int slice_index = static_cast<int>(std::floor(Z_offset / Delta_Z));
+
+    // 边界处理：确保 Z=Zmax 的孔隙落在最后一个区间 (索引 NUM_SLICES - 1)
+    if (slice_index >= NUM_SLICES) {
+      slice_index = NUM_SLICES - 1;
+    }
+
+    // 统计和聚合数据
+    slices[slice_index].concentration_variance_A += pow(Pb[i].C1, 2) - pow(slices[slice_index].Mean_concentration_A, 2);
+    slices[slice_index].concentration_variance_B += pow(Pb[i].C2, 2) - pow(slices[slice_index].Mean_concentration_B, 2);
+    slices[slice_index].concentration_variance_C += pow(Pb[i].C3, 2) - pow(slices[slice_index].Mean_concentration_C, 2);
+
+    if (Pb[i].C1 > 0.0) {
+      slices[slice_index].concentration_entropy_A += -Pb[i].C1 * std::log(Pb[i].C1);
+    }
+
+    if (Pb[i].C2 > 0.0) {
+      slices[slice_index].concentration_entropy_B += -Pb[i].C2 * std::log(Pb[i].C2);
+    }
+
+    if (Pb[i].C3 > 0.0) {
+      slices[slice_index].concentration_entropy_C += -Pb[i].C3 * std::log(Pb[i].C3);
+    }
+  }
+
+  // 假设 outfile 已经被定义并打开
+  string filename = "section_parameters_" + to_string(timestep) + ".dat";
+  std::ofstream outfile(filename, std::ios::out);
+
+  // 检查文件是否成功打开
+  if (!outfile.is_open()) {
+    std::cerr << "Error: Could not open output file for section parameters." << std::endl;
+    return;
+  }
+
+  // 设置输出精度和宽度
+  outfile << std::fixed << std::setprecision(10);
+
+  // --- 打印表头 ---
+  outfile << "Slice_ID\tZ_Start\tZ_End\t"
+          << "Mean_CA\tMean_CB\tMean_CC\t"
+          << "Var_CA\tVar_CB\tVar_CC\t"
+          << "Entropy_CA\tEntropy_CB\tEntropy_CC" << std::endl;
+
+  // --- 遍历并打印每个切片的结果 ---
+  for (size_t i = 0; i < slices.size(); i++) {
+    const auto& current_slice = slices[i];
+
+    outfile << i + 1 << "\t"        // Slice_ID (从 1 开始)
+            << current_slice.Z_start << "\t" << current_slice.Z_end << "\t";
+
+    // 打印平均浓度 (Mean)
+    outfile << current_slice.Mean_concentration_A << "\t" << current_slice.Mean_concentration_B << "\t" << current_slice.Mean_concentration_C << "\t";
+
+    // 打印方差 (Variance)
+    // 注意：您计算的方差项是 $\sum (C_i^2 - \bar{C}^2)$，
+    // 最终的方差是 $\frac{1}{N} \sum (C_i - \bar{C})^2$。
+    // 由于 $\sum (C_i^2 - \bar{C}^2)$ 不是标准的方差计算方式，
+    // 我假设您的最终计算需要进一步处理（除以 Vi 或 pore_count），
+    // 但为了遵循您的代码，我直接打印您累加的 variance_A。
+    outfile << current_slice.concentration_variance_A << "\t" << current_slice.concentration_variance_B << "\t" << current_slice.concentration_variance_C << "\t";
+
+    // 打印浓度熵 (Entropy)
+    outfile << current_slice.concentration_entropy_A << "\t" << current_slice.concentration_entropy_B << "\t" << current_slice.concentration_entropy_C << std::endl;
+  }
+
+  outfile.close();        // 关闭文件
 }
 
 void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
@@ -4495,13 +4623,15 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
           << "dimensionless_time = " << time_all * ((area_main_Q().second + area_side_Q().second) / (2000 * voxel_size) / pow(sqrt(pi) / double(2) * 2000 * voxel_size, 2) / 0.2) << "\t"
           << "Q_main = " << area_main_Q().second * 60e6 << " ml/min" << "\t" << "Q_side = " << area_side_Q().second * 60e6 << " ml/min" << "\t" << "v_main = " << area_main_Q().first * 6e3 << " cm/min"
           << "\t" << "v_side = " << area_side_Q().first * 6e3 << " cm/min" << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6 << "\t"
-          << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t"
-          << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t" << endl;
+          << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << endl;
 
   output_co2_methane(time_step - 1);        // 初始状态
   // end AMGX initialization
   // ************ begin AMGX solver ************
   int nn{1};
+  double mean_out_c1_old{average_outlet_concentration()[0]};
+  double mean_out_c1_rediff{0};
+  bool terminate_flag{0};
   AMGXsolver_subroutine_kong(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
   do {
     inter_n = 0;
@@ -4513,10 +4643,10 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
       cout << "Inf_norm = " << norm_inf << "\t" << "dt = " << dt << "\t\t" << "inner loop = " << inter_n << "\t\t" << "outer loop = " << time_step + 1 << endl;
       cout << endl;
     } while (norm_inf > eps && (inter_n < 20 || (norm_inf > 1e-3 && norm_inf > 1e-5)));
-    iteration_number = 1;
 
     time_all += dt;
-    KONG_Update_parameters();
+    KONG_Update_parameters(iteration_number);
+    iteration_number += 1;
 
     auto stop2 = high_resolution_clock::now();
     auto duration2 = duration_cast<milliseconds>(stop2 - start1);
@@ -4526,7 +4656,11 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
             << " cm/min" << "\t" << "v_side = " << area_side_Q().first * 6e3 << " cm/min" << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6
             << "\t" << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t"
             << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t" << endl;
-
+    mean_out_c1_rediff = (average_outlet_concentration()[0] - mean_out_c1_old) / mean_out_c1_old;
+    terminate_flag = {mean_out_c1_rediff < 1e-5};
+    mean_out_c1_old = average_outlet_concentration()[0];
+    /*debug*/
+    cout << "terminate_flag:\t" << terminate_flag << "iteration_number\t" << iteration_number;
     for (int i = 0; i < pn; i++) {
       Pb[i].pressure_old = Pb[i].pressure;
       Pb[i].C1_old = Pb[i].C1;
@@ -4542,8 +4676,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
     time_step++;
 
     /*在这里计算一些参数*/
-
-  } while (average_outlet_concentration()[0] < 0.99 || average_outlet_concentration()[1] < 0.99);
+  } while (!(terminate_flag && iteration_number > 100));
   output_co2_methane(time_step);
   outfile.close();
   auto stop1 = high_resolution_clock::now();
@@ -5186,14 +5319,14 @@ void PNMsolver::Paramentinput() {
         porefile.close();
         inlet_coo.close();
 
-        double Z_min, Z_max;
         find_z_bounds_ptr(Pb, pn, Z_min, Z_max);
-
+        Z_min = Z_min * voxel_size;
+        Z_max = Z_max * voxel_size;
         std::cout << "--- Z 坐标范围 ---" << std::endl;
         std::cout << "Z_min: " << Z_min << std::endl;
         std::cout << "Z_max: " << Z_max << std::endl;
 
-        std::vector<double> plane_coords = calculate_split_planes(Z_min, Z_max, 20);
+        plane_coords = calculate_split_planes(Z_min, Z_max, 20);
         std::cout << "\n--- Z 轴分隔面坐标 (共 19 个) ---" << std::endl;
         double Delta_Z = (Z_max - Z_min) / 20.0;
         std::cout << "每份间隔 (Delta Z): " << Delta_Z << std::endl;
