@@ -580,6 +580,12 @@ void PNMsolver::output_co2_methane(int n) {
   for (int i = 0; i < pn; i++) {
     outfile << Pb[i].C2 << endl;
   }
+
+  outfile << "SCALARS C2 double 1" << endl;
+  outfile << "LOOKUP_TABLE table6" << endl;
+  for (int i = 0; i < pn; i++) {
+    outfile << Pb[i].C3 << endl;
+  }
 }
 
 /*
@@ -1587,7 +1593,7 @@ reverse_mode<double> PNMsolver::func_append_kong1(reverse_mode<double>& Pi, reve
       iCounter1++;
     }
   }
-  return RETURN - 0.042 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.01 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reverse_mode<double>* Pjs) {
@@ -1619,7 +1625,7 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.0185 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.005 * 0.01 * 0.01 * 0.01 / 60;
 };
 reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id) {
   reverse_mode<double> RETURN;
@@ -4640,7 +4646,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
       Matrix_COO2CSR();
       AMGXsolver_subroutine_kong(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
       inter_n++;
-      cout << "Inf_norm = " << norm_inf << "\t" << "dt = " << dt << "\t\t" << "inner loop = " << inter_n << "\t\t" << "outer loop = " << time_step + 1 << endl;
+      cout << "Inf_norm = " << norm_inf << "\t" << "dt = " << dt << "\t" << "inner loop = " << inter_n << "\t" << "outer loop = " << time_step + 1 << endl;
       cout << endl;
     } while (norm_inf > eps && (inter_n < 20 || (norm_inf > 1e-3 && norm_inf > 1e-5)));
 
