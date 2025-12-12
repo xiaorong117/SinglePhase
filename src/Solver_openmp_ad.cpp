@@ -4628,19 +4628,21 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
 
   auto stop3 = high_resolution_clock::now();
   auto duration3 = duration_cast<milliseconds>(stop3 - start1);
-  outfile << "inner loop = " << inter_n << "\t" << "norm = " << norm_inf << "\t" << "machine_time = " << duration3.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
-          << "dimensionless_time = " << time_all * ((area_main_Q().second + area_side_Q().second) / (2000 * voxel_size) / pow(sqrt(pi) / double(2) * 2000 * voxel_size, 2) / 0.2) << "\t"
-          << "Q_main = " << area_main_Q().second * 60e6 << " ml/min" << "\t" << "Q_side = " << area_side_Q().second * 60e6 << " ml/min" << "\t" << "v_main = " << area_main_Q().first * 6e3 << " cm/min"
-          << "\t" << "v_side = " << area_side_Q().first * 6e3 << " cm/min" << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6 << "\t"
-          << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << endl;
-
-  output_co2_methane(time_step - 1);        // 初始状态
-  // end AMGX initialization
-  // ************ begin AMGX solver ************
   int nn{1};
   double mean_out_c1_old{average_outlet_concentration()[0]};
   double mean_out_c1_rediff{0};
   bool terminate_flag{0};
+  outfile << "inner loop = " << inter_n << "\t" << "norm = " << norm_inf << "\t" << "machine_time = " << duration3.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
+          << "dimensionless_time = " << time_all * ((area_main_Q().second + area_side_Q().second) / (2000 * voxel_size) / pow(sqrt(pi) / double(2) * 2000 * voxel_size, 2) / 0.2) << "\t"
+          << "Q_main = " << area_main_Q().second * 60e6 << " ml/min" << "\t" << "Q_side = " << area_side_Q().second * 60e6 << " ml/min" << "\t" << "v_main = " << area_main_Q().first * 6e3 << " cm/min"
+          << "\t" << "v_side = " << area_side_Q().first * 6e3 << " cm/min" << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6 << "\t"
+          << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t"
+          << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t" << "mean_out_c1_rediff = " << mean_out_c1_rediff << endl;
+
+  output_co2_methane(time_step - 1);        // 初始状态
+  // end AMGX initialization
+  // ************ begin AMGX solver ************
+
   AMGXsolver_subroutine_kong(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
   do {
     inter_n = 0;
