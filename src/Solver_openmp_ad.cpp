@@ -346,7 +346,7 @@ using namespace Solver_property;
 class PNMsolver        // 定义类
 {
  public:
-  PNMsolver(){};
+  PNMsolver() {};
   void AMGX_solver_CO2_methane();        // 混合模型二氧化碳驱替甲烷
   void AMGX_solver_C_kong_PNM();         // kong
 
@@ -4793,7 +4793,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM() {
 
     auto stop2 = high_resolution_clock::now();
     auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-    outfile << "inner loop = " << inter_n << "\t" << "norm = " << norm_inf << "\t" << "machine_time = " << duration3.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
+    outfile << "inner loop = " << inter_n << "\t" << "norm = " << norm_inf << "\t" << "machine_time = " << duration2.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
             << "dimensionless_time = " << time_all * ((area_main_Q().second + area_side_Q().second) / (2000 * voxel_size) / pow(sqrt(pi) / double(2) * 2000 * voxel_size, 2) / 0.2) << "\t"
             << "Q_main = " << area_main_Q().second * 60e6 << " ml/min" << "\t" << "Q_side = " << area_side_Q().second * 60e6 << " ml/min" << "\t" << "v_main = " << area_main_Q().first * 6e3
             << " cm/min" << "\t" << "v_side = " << area_side_Q().first * 6e3 << " cm/min" << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6
