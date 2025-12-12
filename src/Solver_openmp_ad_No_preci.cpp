@@ -581,7 +581,7 @@ void PNMsolver::output_co2_methane(int n) {
     outfile << Pb[i].C2 << endl;
   }
 
-  outfile << "SCALARS C2 double 1" << endl;
+  outfile << "SCALARS C3 double 1" << endl;
   outfile << "LOOKUP_TABLE table6" << endl;
   for (int i = 0; i < pn; i++) {
     outfile << Pb[i].C3 << endl;
@@ -1593,7 +1593,7 @@ reverse_mode<double> PNMsolver::func_append_kong1(reverse_mode<double>& Pi, reve
       iCounter1++;
     }
   }
-  return RETURN - 0.01 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.02 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reverse_mode<double>* Pjs) {
@@ -1625,7 +1625,7 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.005 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.008 * 0.01 * 0.01 * 0.01 / 60;
 };
 reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id) {
   reverse_mode<double> RETURN;
@@ -2768,8 +2768,8 @@ void PNMsolver::kong_matrix_per_QIN() {
 
   F1 = func_append_kong1(P1i, Pjs1);
   F2 = func_append_kong2(P2i, Pjs2);
-  B[op + mp] = 1.02 * 0.01 * 0.01 * 0.01 / 60;
-  B[op + mp + 1] = 0.18 * 0.01 * 0.01 * 0.01 / 60;
+  B[op + mp] = 0.02 * 0.01 * 0.01 * 0.01 / 60;
+  B[op + mp + 1] = 0.008 * 0.01 * 0.01 * 0.01 / 60;
 
   F1.diff(0, 1);
   F2.diff(0, 1);
@@ -6674,8 +6674,10 @@ array<double, 2> PNMsolver::average_outlet_concentration() {
     average_c1 += Pb[i].C1;
     average_c2 += Pb[i].C2;
   }
-  average_c1 = abs(average_c1 / double(outlet + m_outlet) / kong::inlet_C1);
-  average_c2 = abs(average_c2 / double(outlet + m_outlet) / kong::inlet_C2);
+  // average_c1 = abs(average_c1 / double(outlet + m_outlet) / kong::inlet_C1);
+  // average_c2 = abs(average_c2 / double(outlet + m_outlet) / kong::inlet_C2);
+  average_c1 = abs(average_c1 / double(outlet + m_outlet));
+  average_c2 = abs(average_c2 / double(outlet + m_outlet));
   array<double, 2> result = {average_c1, average_c2};
   return result;
 }

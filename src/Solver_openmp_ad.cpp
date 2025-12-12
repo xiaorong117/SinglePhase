@@ -580,6 +580,12 @@ void PNMsolver::output_co2_methane(int n) {
   for (int i = 0; i < pn; i++) {
     outfile << Pb[i].C2 << endl;
   }
+
+  outfile << "SCALARS C3 double 1" << endl;
+  outfile << "LOOKUP_TABLE table6" << endl;
+  for (int i = 0; i < pn; i++) {
+    outfile << Pb[i].C3 << endl;
+  }
 }
 
 /*
@@ -1587,7 +1593,7 @@ reverse_mode<double> PNMsolver::func_append_kong1(reverse_mode<double>& Pi, reve
       iCounter1++;
     }
   }
-  return RETURN - 0.042 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.01 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reverse_mode<double>* Pjs) {
@@ -1619,7 +1625,7 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.0185 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.001 * 0.01 * 0.01 * 0.01 / 60;
 };
 reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id) {
   reverse_mode<double> RETURN;
@@ -2762,8 +2768,8 @@ void PNMsolver::kong_matrix_per_QIN() {
 
   F1 = func_append_kong1(P1i, Pjs1);
   F2 = func_append_kong2(P2i, Pjs2);
-  B[op + mp] = 1.02 * 0.01 * 0.01 * 0.01 / 60;
-  B[op + mp + 1] = 0.18 * 0.01 * 0.01 * 0.01 / 60;
+  B[op + mp] = 0.01 * 0.01 * 0.01 * 0.01 / 60;
+  B[op + mp + 1] = 0.001 * 0.01 * 0.01 * 0.01 / 60;
 
   F1.diff(0, 1);
   F2.diff(0, 1);
@@ -2854,21 +2860,21 @@ void PNMsolver::kong_matrix_per_QIN() {
   }
 
   /*B debug*/
-  ofstream B_OUT("B_OUT_kong.txt");
-  for (int i = 0; i < (op + mp) + 2; i++) {
-    B_OUT << B[i] << endl;
-  }
-  B_OUT.close();
+  // ofstream B_OUT("B_OUT_kong.txt");
+  // for (int i = 0; i < (op + mp) + 2; i++) {
+  //   B_OUT << B[i] << endl;
+  // }
+  // B_OUT.close();
 
   /*Tb debug*/
-  ofstream Tb_out("Tb_out.txt");
-  // Tb_out << "id" << "\t" << "ID1" << "\t" << "ID2" << "\t" << "pressure_ID1" << "\t" << "pressure_ID2" << "\t" << "conductivity" << "\t" << "flux" << "\t" << "B" << endl;
-  for (int i = 0; i < 2 * tn; i++) {
-    // Tb_out << "Tb[" << i << "] =" << "\t" << Tb[i].ID_1 << "\t" << Tb[i].ID_2 << "\t" << Pb[Tb[i].ID_1].pressure << "\t" << Pb[Tb[i].ID_1].pressure << "\t" << Tb[i].Conductivity << "\t"
-    //        << -Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << "\t" << Tb[i].Conductivity * Pb[Tb[i].ID_2].pressure << endl;
-    Tb_out << Tb[i].ID_1 << "\t" << Tb[i].ID_2 << "\t" << Tb[i].Conductivity << endl;
-  }
-  Tb_out.close();
+  // ofstream Tb_out("Tb_out.txt");
+  // // Tb_out << "id" << "\t" << "ID1" << "\t" << "ID2" << "\t" << "pressure_ID1" << "\t" << "pressure_ID2" << "\t" << "conductivity" << "\t" << "flux" << "\t" << "B" << endl;
+  // for (int i = 0; i < 2 * tn; i++) {
+  //   // Tb_out << "Tb[" << i << "] =" << "\t" << Tb[i].ID_1 << "\t" << Tb[i].ID_2 << "\t" << Pb[Tb[i].ID_1].pressure << "\t" << Pb[Tb[i].ID_1].pressure << "\t" << Tb[i].Conductivity << "\t"
+  //   //        << -Tb[i].Conductivity * (Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure) << "\t" << Tb[i].Conductivity * Pb[Tb[i].ID_2].pressure << endl;
+  //   Tb_out << Tb[i].ID_1 << "\t" << Tb[i].ID_2 << "\t" << Tb[i].Conductivity << endl;
+  // }
+  // Tb_out.close();
 }
 
 void PNMsolver::kong_matrix_QIN() {
@@ -4650,7 +4656,8 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
 
     auto stop2 = high_resolution_clock::now();
     auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-    outfile << "inner loop = " << inter_n << "\t" << "norm = " << norm_inf << "\t" << "machine_time = " << duration3.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
+    outfile << "inner loop = " << inter_n << "\t" << "norm = " << norm_inf << "\t" << "machine_time = " << duration2.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
+            << "iteration_number = " << iteration_number << "\t"
             << "dimensionless_time = " << time_all * ((area_main_Q().second + area_side_Q().second) / (2000 * voxel_size) / pow(sqrt(pi) / double(2) * 2000 * voxel_size, 2) / 0.2) << "\t"
             << "Q_main = " << area_main_Q().second * 60e6 << " ml/min" << "\t" << "Q_side = " << area_side_Q().second * 60e6 << " ml/min" << "\t" << "v_main = " << area_main_Q().first * 6e3
             << " cm/min" << "\t" << "v_side = " << area_side_Q().first * 6e3 << " cm/min" << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6
@@ -4667,7 +4674,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
       Pb[i].C2_old = Pb[i].C2;
     }
 
-    if (inter_n < 10) {
+    if (inter_n <= 10) {
       dt = dt * 2;
     }
 
@@ -5299,7 +5306,6 @@ void PNMsolver::Paramentinput() {
           if (Pb[i].full_coord == 0) {
             cout << i << endl;
           }
-          Pb[i].type = 2;
           Pb[i].full_coord_ori = Pb[i].full_coord;
           Pb[i].full_accum_ori = Pb[i].full_accum;
           Pb[i].km = ko;
@@ -6668,8 +6674,10 @@ array<double, 2> PNMsolver::average_outlet_concentration() {
     average_c1 += Pb[i].C1;
     average_c2 += Pb[i].C2;
   }
-  average_c1 = abs(average_c1 / double(outlet + m_outlet) / kong::inlet_C1);
-  average_c2 = abs(average_c2 / double(outlet + m_outlet) / kong::inlet_C2);
+  // average_c1 = abs(average_c1 / double(outlet + m_outlet) / kong::inlet_C1);
+  // average_c2 = abs(average_c2 / double(outlet + m_outlet) / kong::inlet_C2);
+  average_c1 = abs(average_c1 / double(outlet + m_outlet));
+  average_c2 = abs(average_c2 / double(outlet + m_outlet));
   array<double, 2> result = {average_c1, average_c2};
   return result;
 }
@@ -7423,8 +7431,8 @@ int main(int argc, char** argv) {
 
   // Solver.AMGX_solver_CO2_methane();
   // Solver.AMGX_solver_C_kong_PNM();        // 这个应该是使用Flag_velocity_bound == flase来进行Dirichlet boundary的transport
-  Solver.AMGX_solver_C_kong_PNM_Neumann_boundary();        // 这个因该是 Neumann_boundary 下的transport
-  // Solver.AMGX_Neumann_boundary_QIN_incompressible();        // 这个应该是使用Neumann boundary condition的不可压缩流动模拟，求解压力场
+  // Solver.AMGX_solver_C_kong_PNM_Neumann_boundary();        // 这个因该是 Neumann_boundary 下的transport
+  Solver.AMGX_Neumann_boundary_QIN_incompressible();        // 这个应该是使用Neumann boundary condition的不可压缩流动模拟，求解压力场
   // Solver.AMGX_velocity_boundary_incompressible_per();        // 这个应该是用来算渗透率的程序,不过用的是流速边界条件(已经弃用了), 可以通过Flag_velocity_bound == flase，来进行Dirichlet boundary下的渗透率计算
   // Solver.EIGEN_GPU_velocity_boundary_incompressible_per();    // 这个应该是用来算渗透率的程序，只不过求解器使用了EIGEN和自己写的GPU_Solver, 也可以通过Flag_velocity_bound == flase，来进行Dirichlet boundary下的渗透率计算
 }
