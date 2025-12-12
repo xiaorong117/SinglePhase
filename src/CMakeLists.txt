@@ -71,7 +71,6 @@ target_link_libraries(${PROJECT_NAME} PUBLIC  ${CUSOLVER_LIBRARY} ${CUDART_LIBRA
 target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/Mycode/lib/AMGX/include)
 target_link_libraries(${PROJECT_NAME} PUBLIC "/home/rong/Mycode/lib/AMGX/build/libamgxsh.so")
 
-
 # 连接GLS数学库
 target_link_libraries(${PROJECT_NAME} PUBLIC gsl gslcblas)
 
