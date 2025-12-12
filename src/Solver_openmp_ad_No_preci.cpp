@@ -346,7 +346,7 @@ using namespace Solver_property;
 class PNMsolver        // 定义类
 {
  public:
-  PNMsolver() {};
+  PNMsolver(){};
   void AMGX_solver_CO2_methane();        // 混合模型二氧化碳驱替甲烷
   void AMGX_solver_C_kong_PNM();         // kong
 
