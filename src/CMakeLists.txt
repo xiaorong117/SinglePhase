@@ -31,7 +31,7 @@ set(LIB_PATH /home/rong/桌面/Mycode/lib)
 # target_link_libraries(gpu_solver_single PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcusparse_static.a")
 # target_link_libraries(gpu_solver_single PRIVATE  "/home/rong/Mycode/lib/libnvToolsExt.so.1.0.0")
 
-add_executable(${PROJECT_NAME} ${CURRENT_WORK_PATH}/src/Solver_openmp_ad.cpp)
+add_executable(${PROJECT_NAME} ${CURRENT_WORK_PATH}/src/Solver_openmp_ad_No_preci.cpp)
 
 # 添加头文件路径
 target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/Mycode/lib/AMGX/include)

@@ -1593,7 +1593,7 @@ reverse_mode<double> PNMsolver::func_append_kong1(reverse_mode<double>& Pi, reve
       iCounter1++;
     }
   }
-  return RETURN - 0.02 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.043 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reverse_mode<double>* Pjs) {
@@ -1625,7 +1625,7 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.008 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.0185 * 0.01 * 0.01 * 0.01 / 60;
 };
 reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id) {
   reverse_mode<double> RETURN;
@@ -4622,9 +4622,6 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
 
   auto stop3 = high_resolution_clock::now();
   auto duration3 = duration_cast<milliseconds>(stop3 - start1);
-  output_co2_methane(time_step - 1);        // 初始状态
-  // end AMGX initialization
-  // ************ begin AMGX solver ************
   int nn{1};
   double mean_out_c1_old{average_outlet_concentration()[0]};
   double mean_out_c1_rediff{0};
@@ -4636,6 +4633,9 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
           << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t"
           << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t" << "mean_out_c1_rediff = " << mean_out_c1_rediff << endl;
 
+  output_co2_methane(time_step - 1);        // 初始状态
+  // end AMGX initialization
+  // ************ begin AMGX solver ************
   AMGXsolver_subroutine_kong(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
   do {
     inter_n = 0;
