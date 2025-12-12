@@ -134,8 +134,21 @@
     ],
     "python-envs.defaultEnvManager": "ms-python.python:system",
     "python-envs.defaultPackageManager": "ms-python.python:pip",
+    
+    // --- 核心修复区域 ---
     "C_Cpp.formatting": "clangFormat",
+    
+    // 1. 这里必须填 "file"，不能填文件名
+    "C_Cpp.clang_format_style": "file",
+    
+    // 2. 确保指定路径 (WSL环境)
+    "C_Cpp.clang_format_path": "/usr/bin/clang-format",
+    
     "editor.formatOnSave": true,
-    "editor.defaultFormatter": "xaver.clang-format",
-    "notebook.defaultFormatter": "xaver.clang-format"
+    "editor.formatOnPaste": true,
+    
+    // 针对 C++ 文件的强制设置
+    "[cpp]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools"
+    }
 }

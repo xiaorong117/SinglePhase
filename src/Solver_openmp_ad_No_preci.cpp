@@ -346,7 +346,7 @@ using namespace Solver_property;
 class PNMsolver        // 定义类
 {
  public:
-  PNMsolver() {};
+  PNMsolver(){};
   void AMGX_solver_CO2_methane();        // 混合模型二氧化碳驱替甲烷
   void AMGX_solver_C_kong_PNM();         // kong
 
@@ -4544,10 +4544,7 @@ void PNMsolver::KONG_Update_parameters(int timestep) {
   outfile << std::fixed << std::setprecision(10);
 
   // --- 打印表头 ---
-  outfile << "Slice_ID\tZ_Start\tZ_End\t"
-          << "Mean_CA\tMean_CB\tMean_CC\t"
-          << "Var_CA\tVar_CB\tVar_CC\t"
-          << "Entropy_CA\tEntropy_CB\tEntropy_CC" << std::endl;
+  outfile << "Slice_ID\tZ_Start\tZ_End\t" << "Mean_CA\tMean_CB\tMean_CC\t" << "Var_CA\tVar_CB\tVar_CC\t" << "Entropy_CA\tEntropy_CB\tEntropy_CC" << std::endl;
 
   // --- 遍历并打印每个切片的结果 ---
   for (size_t i = 0; i < slices.size(); i++) {
@@ -4656,15 +4653,20 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
 
     auto stop2 = high_resolution_clock::now();
     auto duration2 = duration_cast<milliseconds>(stop2 - start1);
-    outfile << "inner loop = " << inter_n << "\t" << "norm = " << norm_inf << "\t" << "machine_time = " << duration3.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
+
+    if (iteration_number % 10 == 0) {
+      mean_out_c1_rediff = (average_outlet_concentration()[0] - mean_out_c1_old) / mean_out_c1_old;
+      terminate_flag = {mean_out_c1_rediff < 1e-5};
+      mean_out_c1_old = average_outlet_concentration()[0];
+    }
+
+    outfile << "inner loop = " << inter_n << "\t" << "norm = " << norm_inf << "\t" << "machine_time = " << duration2.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
             << "dimensionless_time = " << time_all * ((area_main_Q().second + area_side_Q().second) / (2000 * voxel_size) / pow(sqrt(pi) / double(2) * 2000 * voxel_size, 2) / 0.2) << "\t"
             << "Q_main = " << area_main_Q().second * 60e6 << " ml/min" << "\t" << "Q_side = " << area_side_Q().second * 60e6 << " ml/min" << "\t" << "v_main = " << area_main_Q().first * 6e3
             << " cm/min" << "\t" << "v_side = " << area_side_Q().first * 6e3 << " cm/min" << "\t" << "dt = " << dt << "\t" << "Peclet_MAIN = " << area_main_Q().first / kong::D_dispersion_macro * 10e-6
             << "\t" << "Peclet_side = " << area_side_Q().first / kong::D_dispersion_macro * 10e-6 << "\t" << "average_outlet_c1 = " << average_outlet_concentration()[0] << "\t"
-            << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t" << endl;
-    mean_out_c1_rediff = (average_outlet_concentration()[0] - mean_out_c1_old) / mean_out_c1_old;
-    terminate_flag = {mean_out_c1_rediff < 1e-5};
-    mean_out_c1_old = average_outlet_concentration()[0];
+            << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t" << "mean_out_c1_rediff = " << mean_out_c1_rediff << endl;
+
     /*debug*/
     cout << "terminate_flag:\t" << terminate_flag << "iteration_number\t" << iteration_number;
     for (int i = 0; i < pn; i++) {
