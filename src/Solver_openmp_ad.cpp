@@ -5228,6 +5228,8 @@ void PNMsolver::initial_condition() {
 void PNMsolver::initial_condition(int flag) {
   string filename = "CO2_mehante_Pe_per_";
   filename.append(to_string(Time_step));
+
+  /*  Pressure  */
   ifstream file(filename + ".vtk", ios::in);
   assert(file.is_open());
   string s;
@@ -5244,6 +5246,60 @@ void PNMsolver::initial_condition(int flag) {
     Pb[i].pressure_old = Pb[i].pressure;
   }
   file.close();
+  /*  Pressure  */
+
+  /*  C1  */
+  ifstream file_for_c1(filename + ".vtk", ios::in);
+  assert(file_for_c1.is_open());
+  string s_c1;
+  string head_c1 = "LOOKUP_TABLE table5";
+  while (getline(file_for_c1, s_c1)) {
+    if (s_c1.find(head_c1) == 0) {
+      break;
+    }
+  }
+  for (int i = 0; i < pn; i++) {
+    file_for_c1 >> Pb[i].C1;
+    Pb[i].C1_old = Pb[i].C1;
+  }
+  file_for_c1.close();
+  /*  C1  */
+
+  /*  C2  */
+  ifstream file_for_c2(filename + ".vtk", ios::in);
+  assert(file_for_c2.is_open());
+  string s_c2;
+  string head_c2 = "LOOKUP_TABLE table6";
+  while (getline(file_for_c2, s_c2)) {
+    if (s_c2.find(head_c2) == 0) {
+      break;
+    }
+  }
+  for (int i = 0; i < pn; i++) {
+    file_for_c2 >> Pb[i].C2;
+    Pb[i].C2_old = Pb[i].C2_old;
+  }
+  file_for_c2.close();
+  /*  C2  */
+
+  /*  C3  */
+  ifstream file_for_c3(filename + ".vtk", ios::in);
+  assert(file_for_c3.is_open());
+  string s_c3;
+  string head_c3 = "SCALARS C3 double 1";
+  while (getline(file_for_c3, s_c3)) {
+    if (s_c3.find(head_c3) == 0) {
+      break;
+    }
+  }
+  getline(file_for_c3, s_c3);
+
+  for (int i = 0; i < pn; i++) {
+    file_for_c3 >> Pb[i].C3;
+    Pb[i].C3_old = Pb[i].C3;
+  }
+  file_for_c3.close();
+  /*  C3  */
 }
 
 void find_z_bounds_ptr(const pore* Pb, int pn, double& Z_min, double& Z_max) {
