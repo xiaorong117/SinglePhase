@@ -4684,7 +4684,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
     time_step++;
 
     /*在这里计算一些参数*/
-  } while (!(terminate_flag && iteration_number > 100));
+  } while (!(terminate_flag));
   output_co2_methane(time_step);
   outfile.close();
   auto stop1 = high_resolution_clock::now();

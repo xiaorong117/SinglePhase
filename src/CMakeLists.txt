@@ -1,6 +1,6 @@
 ﻿#Current work path
-set(CURRENT_WORK_PATH /home/rong/Mycode/SinglePhase)
-set(LIB_PATH /home/rong/桌面/Mycode/lib)
+set(CURRENT_WORK_PATH /home/rong/SinglePhase)
+set(LIB_PATH /home/rong/lib)
 
 # add_library(gpu_solver_single STATIC ${CURRENT_WORK_PATH}/src/GPU.cpp)
 # find_package(OpenMP REQUIRED)
@@ -34,8 +34,8 @@ set(LIB_PATH /home/rong/桌面/Mycode/lib)
 add_executable(${PROJECT_NAME} ${CURRENT_WORK_PATH}/src/Solver_openmp_ad_No_preci.cpp)
 
 # 添加头文件路径
-target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/Mycode/lib/AMGX/include)
-target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/Mycode/lib/cuda-samples-master/Common)
+target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/lib/AMGX/include)
+target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/lib/cuda-samples-master/Common)
 target_include_directories(${PROJECT_NAME} PRIVATE /usr/local/cuda-12.6/include)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CURRENT_WORK_PATH}/src)
 
@@ -60,22 +60,22 @@ set_target_properties(${PROJECT_NAME}
 find_package(CUDA REQUIRED)
 include_directories(/home/rong/Mycode/lib/cuda-samples-master/Common)
 include_directories(${CUDA_INCLUDE_DIRS})
-find_library(CUBLAS_LIBRARY cublas /usr/local/cuda-12.9/targets/x86_64-linux/lib)
-find_library(CUSPARSE_LIBRARY cusparse /usr/local/cuda-12.9/targets/x86_64-linux/lib)
-find_library(CUDART_LIBRARY cudart /usr/local/cuda-12.9/targets/x86_64-linux/lib)
-find_library(CUSOLVER_LIBRARY cusolver /usr/local/cuda-12.9/targets/x86_64-linux/lib)
-find_library(NVTX_LIB nvToolsExt /usr/local/cuda-12.9/targets/x86_64-linux/lib)
+find_library(CUBLAS_LIBRARY cublas /usr/local/cuda-12.6/targets/x86_64-linux/lib)
+find_library(CUSPARSE_LIBRARY cusparse /usr/local/cuda-12.6/targets/x86_64-linux/lib)
+find_library(CUDART_LIBRARY cudart /usr/local/cuda-12.6/targets/x86_64-linux/lib)
+find_library(CUSOLVER_LIBRARY cusolver /usr/local/cuda-12.6/targets/x86_64-linux/lib)
+find_library(NVTX_LIB nvToolsExt /usr/local/cuda-12.6/targets/x86_64-linux/lib)
 target_link_libraries(${PROJECT_NAME} PUBLIC  ${CUSOLVER_LIBRARY} ${CUDART_LIBRARY} ${CUBLAS_LIBRARY} ${CUSPARSE_LIBRARY})
 
 # 连接AMGX库和头文件
-target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/Mycode/lib/AMGX/include)
-target_link_libraries(${PROJECT_NAME} PUBLIC "/home/rong/Mycode/lib/AMGX/build/libamgxsh.so")
+target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/lib/AMGX/include)
+target_link_libraries(${PROJECT_NAME} PUBLIC "/home/rong/lib/AMGX/build/libamgxsh.so")
 
 # 连接GLS数学库
 target_link_libraries(${PROJECT_NAME} PUBLIC gsl gslcblas)
 
 # 连接fadbad++
-include_directories(/home/rong/Mycode/lib/FADBAD++-2.1/FADBAD++/)
+include_directories(/home/rong/lib/FADBAD++-2.1/FADBAD++/)
 
 
 #### 静态连接库 #######
