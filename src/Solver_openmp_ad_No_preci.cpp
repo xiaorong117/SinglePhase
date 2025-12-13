@@ -582,7 +582,7 @@ void PNMsolver::output_co2_methane(int n) {
   }
 
   outfile << "SCALARS C3 double 1" << endl;
-  outfile << "LOOKUP_TABLE table6" << endl;
+  outfile << "LOOKUP_TABLE table7" << endl;
   for (int i = 0; i < pn; i++) {
     outfile << Pb[i].C3 << endl;
   }
@@ -5218,7 +5218,7 @@ void PNMsolver::initial_condition() {
 };
 
 void PNMsolver::initial_condition(int flag) {
-  string filename = "CO2_mehante_";
+  string filename = "CO2_mehante_Pe_per_";
   filename.append(to_string(Time_step));
   ifstream file(filename + ".vtk", ios::in);
   assert(file.is_open());
