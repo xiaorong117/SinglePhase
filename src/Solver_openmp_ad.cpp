@@ -216,7 +216,7 @@ int micro_n = m_inlet + mp + m_outlet;
 int para_macro = inlet + outlet + m_inlet;
 int NA = (tn - inlet - outlet - m_inlet - m_outlet) * 2 + (op + mp);
 
-int iteration_number{0};
+int iteration_number{Time_step};
 double getmax_2(double a, double b) {
   return a > b ? a : b;
 }
@@ -392,7 +392,7 @@ class PNMsolver        // 定义类
   double error;
   int time_step = Time_step;
   double time_all = pyhsic_time;
-  double dt = 1e-4;
+  double dt = 0.0001;
   double dt2 = 1e-8;        // 与dt初值相同，用于输出结果文件
   double Q_outlet_macro{0};
   double Q_outlet_free_micro{0};
@@ -1593,7 +1593,7 @@ reverse_mode<double> PNMsolver::func_append_kong1(reverse_mode<double>& Pi, reve
       iCounter1++;
     }
   }
-  return RETURN - 0.0043 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.043 * 0.01 * 0.01 * 0.01 / 60;
   // 0.00043 for PE=0.1
   // 0.0043 for PE=1
   // 0.043 for PE=10
@@ -1628,7 +1628,7 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.00185 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.0185 * 0.01 * 0.01 * 0.01 / 60;
   // 0.000185 for PE=0.1
   // 0.00185 for PE=1
   // 0.0185 for PE=10
@@ -4640,6 +4640,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
           << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t" << "mean_out_c1_rediff = " << mean_out_c1_rediff << endl;
 
   output_co2_methane(time_step - 1);        // 初始状态
+
   // end AMGX initialization
   // ************ begin AMGX solver ************
 
@@ -4651,12 +4652,12 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
       Matrix_COO2CSR();
       AMGXsolver_subroutine_kong(A_amgx, b_amgx, solution_amgx, solver, n_amgx, nnz_amgx);
       inter_n++;
-      cout << "Inf_norm = " << norm_inf << "\t" << "dt = " << dt << "\t\t" << "inner loop = " << inter_n << "\t\t" << "outer loop = " << time_step + 1 << endl;
+      cout << "Inf_norm = " << norm_inf << "\t" << "dt = " << dt << "\t" << "inner loop = " << inter_n << "\t\t" << "outer loop = " << time_step + 1 << endl;
       cout << endl;
     } while (norm_inf > eps && (inter_n < 20 || (norm_inf > 1e-3 && norm_inf > 1e-5)));
 
     time_all += dt;
-    KONG_Update_parameters(iteration_number);
+    KONG_Update_parameters(iteration_number + 1);
     iteration_number += 1;
 
     auto stop2 = high_resolution_clock::now();

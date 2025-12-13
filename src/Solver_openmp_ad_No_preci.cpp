@@ -216,7 +216,7 @@ int micro_n = m_inlet + mp + m_outlet;
 int para_macro = inlet + outlet + m_inlet;
 int NA = (tn - inlet - outlet - m_inlet - m_outlet) * 2 + (op + mp);
 
-int iteration_number{0};
+int iteration_number{Time_step};
 double getmax_2(double a, double b) {
   return a > b ? a : b;
 }
@@ -4649,7 +4649,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
     } while (norm_inf > eps && (inter_n < 20 || (norm_inf > 1e-3 && norm_inf > 1e-5)));
 
     time_all += dt;
-    KONG_Update_parameters(iteration_number);
+    KONG_Update_parameters(iteration_number + 1);
     iteration_number += 1;
 
     auto stop2 = high_resolution_clock::now();
