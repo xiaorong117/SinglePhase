@@ -4675,7 +4675,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
       Pb[i].C2_old = Pb[i].C2;
     }
 
-    if (inter_n < 10) {
+    if (inter_n <= 10 && dt <= 1) {
       dt = dt * 2;
     }
 
