@@ -1,7 +1,7 @@
 ﻿#Current work path
-set(CURRENT_WORK_PATH /home/rong/Mycode/SinglePhase)
-set(LIB_PATH /home/rong/Mycode/lib)
-
+set(CURRENT_WORK_PATH /home/rong/SinglePhase)
+set(LIB_PATH /home/rong/lib)
+set(CUDA_PATH /usr/local/cuda-12.6)
 # add_library(gpu_solver_single STATIC ${CURRENT_WORK_PATH}/src/GPU.cpp)
 # find_package(OpenMP REQUIRED)
 # target_link_libraries(gpu_solver_single PRIVATE OpenMP::OpenMP_CXX)
@@ -23,20 +23,20 @@ set(LIB_PATH /home/rong/Mycode/lib)
 # # # 静态连接AMGX库
 # target_link_libraries(gpu_solver_single PRIVATE "/home/rong/Mycode/lib/AMGX/build/libamgx.a")
 # # # 静态连接CUDA库
-# target_link_libraries(gpu_solver_single PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcusolver_static.a")
-# target_link_libraries(gpu_solver_single PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcublas_static.a")
-# target_link_libraries(gpu_solver_single PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcublasLt_static.a")
-# target_link_libraries(gpu_solver_single PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcudart_static.a")
-# target_link_libraries(gpu_solver_single PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libculibos.a")
-# target_link_libraries(gpu_solver_single PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcusparse_static.a")
+# target_link_libraries(gpu_solver_single PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libcusolver_static.a")
+# target_link_libraries(gpu_solver_single PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libcublas_static.a")
+# target_link_libraries(gpu_solver_single PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libcublasLt_static.a")
+# target_link_libraries(gpu_solver_single PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libcudart_static.a")
+# target_link_libraries(gpu_solver_single PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libculibos.a")
+# target_link_libraries(gpu_solver_single PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libcusparse_static.a")
 # target_link_libraries(gpu_solver_single PRIVATE  "/home/rong/Mycode/lib/libnvToolsExt.so.1.0.0")
 
 add_executable(${PROJECT_NAME} ${CURRENT_WORK_PATH}/src/Solver_openmp_ad_No_preci.cpp)
 
 # 添加头文件路径
-target_include_directories(${PROJECT_NAME} PRIVATE /home/Mycode/lib/AMGX/include)
-target_include_directories(${PROJECT_NAME} PRIVATE /home/Mycode/lib/cuda-samples-master/Common)
-target_include_directories(${PROJECT_NAME} PRIVATE /usr/local/cuda-12.9/include)
+target_include_directories(${PROJECT_NAME} PRIVATE ${LIB_PATH}/AMGX/include)
+target_include_directories(${PROJECT_NAME} PRIVATE ${LIB_PATH}/cuda-samples-master/Common)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CUDA_PATH}/include)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CURRENT_WORK_PATH}/src)
 
 # 链接库
@@ -60,11 +60,11 @@ set_target_properties(${PROJECT_NAME}
 find_package(CUDA REQUIRED)
 include_directories(/home/rong/Mycode/lib/cuda-samples-master/Common)
 include_directories(${CUDA_INCLUDE_DIRS})
-find_library(CUBLAS_LIBRARY cublas /usr/local/cuda-12.9/targets/x86_64-linux/lib)
-find_library(CUSPARSE_LIBRARY cusparse /usr/local/cuda-12.9/targets/x86_64-linux/lib)
-find_library(CUDART_LIBRARY cudart /usr/local/cuda-12.9/targets/x86_64-linux/lib)
-find_library(CUSOLVER_LIBRARY cusolver /usr/local/cuda-12.9/targets/x86_64-linux/lib)
-find_library(NVTX_LIB nvToolsExt /usr/local/cuda-12.9/targets/x86_64-linux/lib)
+find_library(CUBLAS_LIBRARY cublas ${CUDA_PATH}/targets/x86_64-linux/lib)
+find_library(CUSPARSE_LIBRARY cusparse ${CUDA_PATH}/targets/x86_64-linux/lib)
+find_library(CUDART_LIBRARY cudart ${CUDA_PATH}/targets/x86_64-linux/lib)
+find_library(CUSOLVER_LIBRARY cusolver ${CUDA_PATH}/targets/x86_64-linux/lib)
+find_library(NVTX_LIB nvToolsExt ${CUDA_PATH}/targets/x86_64-linux/lib)
 target_link_libraries(${PROJECT_NAME} PUBLIC  ${CUSOLVER_LIBRARY} ${CUDART_LIBRARY} ${CUBLAS_LIBRARY} ${CUSPARSE_LIBRARY})
 
 # 连接AMGX库和头文件
@@ -81,17 +81,17 @@ include_directories(${LIB_PATH}/FADBAD++-2.1/FADBAD++/)
 #### 静态连接库 #######
 # CUDA 头文件
 # find_package(CUDA REQUIRED)
-# include_directories(/home/rong/Mycode/lib/cuda-samples-master/Common)
+# include_directories(${LIB_PATH}/cuda-samples-master/Common)
 # include_directories(${CUDA_INCLUDE_DIRS})
 # 静态连接AMGX库
 # target_link_libraries(${PROJECT_NAME} PRIVATE "/home/rong/Mycode/lib/AMGX/build/libamgx.a")
 # 静态连接CUDA库
-# target_link_libraries(${PROJECT_NAME} PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcusolver_static.a")
-# target_link_libraries(${PROJECT_NAME} PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcublas_static.a")
-# target_link_libraries(${PROJECT_NAME} PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcublasLt_static.a")
-# target_link_libraries(${PROJECT_NAME} PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcudart_static.a")
-# target_link_libraries(${PROJECT_NAME} PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libculibos.a")
-# target_link_libraries(${PROJECT_NAME} PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcusparse_static.a")
+# target_link_libraries(${PROJECT_NAME} PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libcusolver_static.a")
+# target_link_libraries(${PROJECT_NAME} PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libcublas_static.a")
+# target_link_libraries(${PROJECT_NAME} PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libcublasLt_static.a")
+# target_link_libraries(${PROJECT_NAME} PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libcudart_static.a")
+# target_link_libraries(${PROJECT_NAME} PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libculibos.a")
+# target_link_libraries(${PROJECT_NAME} PRIVATE  "${CUDA_PATH}/targets/x86_64-linux/lib/libcusparse_static.a")
 
 # 动态连接 libnvToolsExt.so.1.0.0 这个库没有静态版本
 # target_link_libraries(${PROJECT_NAME} PRIVATE  "/home/rong/Mycode/lib/libnvToolsExt.so.1.0.0")
