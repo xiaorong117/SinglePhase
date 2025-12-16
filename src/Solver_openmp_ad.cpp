@@ -4665,7 +4665,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
 
     if (iteration_number % 10 == 0) {
       mean_out_c1_rediff = (average_outlet_concentration()[0] - mean_out_c1_old) / mean_out_c1_old;
-      terminate_flag = {mean_out_c1_rediff < 1e-5};
+      terminate_flag = {abs(mean_out_c1_rediff) < 1e-5};
       mean_out_c1_old = average_outlet_concentration()[0];
     }
 

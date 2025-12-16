@@ -1625,8 +1625,9 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.019 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.0003 * 0.01 * 0.01 * 0.01 / 60;
 };
+
 reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id) {
   reverse_mode<double> RETURN;
   // size_t counter{0};
@@ -4657,7 +4658,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
 
     if (iteration_number % 10 == 0) {
       mean_out_c1_rediff = (average_outlet_concentration()[0] - mean_out_c1_old) / mean_out_c1_old;
-      terminate_flag = {mean_out_c1_rediff < 1e-5};
+      terminate_flag = {abs(mean_out_c1_rediff) < 1e-5};
       mean_out_c1_old = average_outlet_concentration()[0];
     }
     outfile << "inner loop = " << inter_n << "\t" << "norm = " << norm_inf << "\t" << "machine_time = " << duration2.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"

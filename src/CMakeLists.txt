@@ -1,6 +1,6 @@
 ﻿#Current work path
-set(CURRENT_WORK_PATH /home/rong/SinglePhase)
-set(LIB_PATH /home/rong/lib)
+set(CURRENT_WORK_PATH /home/rong/Mycode/SinglePhase)
+set(LIB_PATH /home/rong/Mycode/lib)
 
 # add_library(gpu_solver_single STATIC ${CURRENT_WORK_PATH}/src/GPU.cpp)
 # find_package(OpenMP REQUIRED)
@@ -31,12 +31,12 @@ set(LIB_PATH /home/rong/lib)
 # target_link_libraries(gpu_solver_single PRIVATE  "/usr/local/cuda-12.6/targets/x86_64-linux/lib/libcusparse_static.a")
 # target_link_libraries(gpu_solver_single PRIVATE  "/home/rong/Mycode/lib/libnvToolsExt.so.1.0.0")
 
-add_executable(${PROJECT_NAME} ${CURRENT_WORK_PATH}/src/Solver_openmp_ad.cpp)
+add_executable(${PROJECT_NAME} ${CURRENT_WORK_PATH}/src/Solver_openmp_ad_No_preci.cpp)
 
 # 添加头文件路径
-target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/lib/AMGX/include)
-target_include_directories(${PROJECT_NAME} PRIVATE /home/rong/lib/cuda-samples-master/Common)
-target_include_directories(${PROJECT_NAME} PRIVATE /usr/local/cuda-12.6/include)
+target_include_directories(${PROJECT_NAME} PRIVATE /home/Mycode/lib/AMGX/include)
+target_include_directories(${PROJECT_NAME} PRIVATE /home/Mycode/lib/cuda-samples-master/Common)
+target_include_directories(${PROJECT_NAME} PRIVATE /usr/local/cuda-12.9/include)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CURRENT_WORK_PATH}/src)
 
 # 链接库
@@ -60,11 +60,11 @@ set_target_properties(${PROJECT_NAME}
 find_package(CUDA REQUIRED)
 include_directories(/home/rong/Mycode/lib/cuda-samples-master/Common)
 include_directories(${CUDA_INCLUDE_DIRS})
-find_library(CUBLAS_LIBRARY cublas /usr/local/cuda-12.6/targets/x86_64-linux/lib)
-find_library(CUSPARSE_LIBRARY cusparse /usr/local/cuda-12.6/targets/x86_64-linux/lib)
-find_library(CUDART_LIBRARY cudart /usr/local/cuda-12.6/targets/x86_64-linux/lib)
-find_library(CUSOLVER_LIBRARY cusolver /usr/local/cuda-12.6/targets/x86_64-linux/lib)
-find_library(NVTX_LIB nvToolsExt /usr/local/cuda-12.6/targets/x86_64-linux/lib)
+find_library(CUBLAS_LIBRARY cublas /usr/local/cuda-12.9/targets/x86_64-linux/lib)
+find_library(CUSPARSE_LIBRARY cusparse /usr/local/cuda-12.9/targets/x86_64-linux/lib)
+find_library(CUDART_LIBRARY cudart /usr/local/cuda-12.9/targets/x86_64-linux/lib)
+find_library(CUSOLVER_LIBRARY cusolver /usr/local/cuda-12.9/targets/x86_64-linux/lib)
+find_library(NVTX_LIB nvToolsExt /usr/local/cuda-12.9/targets/x86_64-linux/lib)
 target_link_libraries(${PROJECT_NAME} PUBLIC  ${CUSOLVER_LIBRARY} ${CUDART_LIBRARY} ${CUBLAS_LIBRARY} ${CUSPARSE_LIBRARY})
 
 # 连接AMGX库和头文件
