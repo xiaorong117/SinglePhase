@@ -1625,7 +1625,7 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.0003 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.00015 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id) {
