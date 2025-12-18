@@ -4680,7 +4680,9 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
       dt = dt * 2;
     }
 
-    output_co2_methane(time_step);
+    if (iteration_number % 10 == 0) {
+      output_co2_methane(time_step);
+    }
 
     time_step++;
 
