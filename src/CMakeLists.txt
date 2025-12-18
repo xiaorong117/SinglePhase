@@ -1,7 +1,7 @@
 ﻿#Current work path
-set(CURRENT_WORK_PATH /home/rong/Mycode/SinglePhase)
-set(LIB_PATH //home/rong/Mycode/lib)
-set(CUDA_PATH /usr/local/cuda-12.9)
+set(CURRENT_WORK_PATH /home/rong/SinglePhase)
+set(LIB_PATH /home/rong/lib)
+set(CUDA_PATH /usr/local/cuda-12.6)
 # add_library(gpu_solver_single STATIC ${CURRENT_WORK_PATH}/src/GPU.cpp)
 # find_package(OpenMP REQUIRED)
 # target_link_libraries(gpu_solver_single PRIVATE OpenMP::OpenMP_CXX)

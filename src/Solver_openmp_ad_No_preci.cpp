@@ -424,7 +424,7 @@ class PNMsolver        // 定义类
   double total_OM_LP_ad{0};
 
   double norm_inf = 0;
-  double eps = 1e-5;            // set residual for dx
+  double eps = 1e-4;            // set residual for dx
   double eps_per = 1e-3;        // set residual for dx
 
   int iterations_number = 0;
@@ -1625,7 +1625,7 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.00015 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.00005 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id) {
