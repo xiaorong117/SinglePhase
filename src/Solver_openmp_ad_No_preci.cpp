@@ -424,7 +424,7 @@ class PNMsolver        // 定义类
   double total_OM_LP_ad{0};
 
   double norm_inf = 0;
-  double eps = 1e-4;            // set residual for dx
+  double eps = 1e-5;            // set residual for dx
   double eps_per = 1e-3;        // set residual for dx
 
   int iterations_number = 0;
@@ -1593,7 +1593,7 @@ reverse_mode<double> PNMsolver::func_append_kong1(reverse_mode<double>& Pi, reve
       iCounter1++;
     }
   }
-  return RETURN - 0.08 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.005 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reverse_mode<double>* Pjs) {
@@ -1625,7 +1625,7 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.00005 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.000015 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id) {
@@ -4658,7 +4658,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
 
     if (iteration_number % 10 == 0) {
       mean_out_c1_rediff = (average_outlet_concentration()[0] - mean_out_c1_old) / mean_out_c1_old;
-      terminate_flag = {abs(mean_out_c1_rediff) < 1e-4};
+      terminate_flag = {abs(mean_out_c1_rediff) < 1e-5};
       mean_out_c1_old = average_outlet_concentration()[0];
     }
     outfile << "inner loop = " << inter_n << "\t" << "norm = " << norm_inf << "\t" << "machine_time = " << duration2.count() / 1000 + machine_time << "\t" << "physical_time = " << time_all << "\t"
