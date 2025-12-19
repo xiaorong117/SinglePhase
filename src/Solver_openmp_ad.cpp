@@ -4677,7 +4677,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
             << "average_outlet_c2 = " << average_outlet_concentration()[1] << "\t" << "mean_out_c1_rediff = " << mean_out_c1_rediff << endl;
 
     /*debug*/
-    cout << "terminate_flag:\t" << terminate_flag << "iteration_number\t" << iteration_number;
+    cout << "terminate_flag:\t" << bool(terminate_flag) << "\titeration_number\t" << iteration_number;
     for (int i = 0; i < pn; i++) {
       Pb[i].pressure_old = Pb[i].pressure;
       Pb[i].C1_old = Pb[i].C1;
