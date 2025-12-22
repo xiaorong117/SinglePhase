@@ -1564,6 +1564,7 @@ reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_in_macro_produc(reverse_mod
   }
   return Return;
 }
+
 reverse_mode<double> PNMsolver::func_append_kong1(reverse_mode<double>& Pi, reverse_mode<double>* Pjs) {
   reverse_mode<double> RETURN;
   reverse_mode<double> Wi;
@@ -1593,7 +1594,7 @@ reverse_mode<double> PNMsolver::func_append_kong1(reverse_mode<double>& Pi, reve
       iCounter1++;
     }
   }
-  return RETURN - 0.005 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.008 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reverse_mode<double>* Pjs) {
@@ -1625,7 +1626,7 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.000015 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.00001 * 0.01 * 0.01 * 0.01 / 60;
 };
 
 reverse_mode<double> PNMsolver::func_BULK_PHASE_FLOW_kong(reverse_mode<double>& Pi, reverse_mode<double>* Pjs, reverse_mode<double>& Wi, reverse_mode<double>* Wjs, int Pore_id) {
@@ -2550,6 +2551,7 @@ void PNMsolver::intrinsic_permeability_matrix() {
   // }
   // Tb_out.close();
 }
+
 void PNMsolver::kong_matrix_per_QIN() {
   /* -------------------------------------------------------------------------------------
    */
@@ -4266,6 +4268,7 @@ int PNMsolver::conjugateGradient_solver(int iters_, double tol_) {
 
   return 0;
 }
+
 void PNMsolver::AMGX_Neumann_boundary_QIN_incompressible() {
   Flag_eigen = false;
   Flag_Hybrid = false;
@@ -4452,6 +4455,7 @@ struct SliceInfo {
   double concentration_entropy_C{0};
   int pore_count{0};
 };
+
 void PNMsolver::KONG_Update_parameters(int timestep) {
   /*更新内部所有孔的C1，C2和C3*/
   for (int i = inlet; i < op + inlet; i++) {
@@ -4676,7 +4680,7 @@ void PNMsolver::AMGX_solver_C_kong_PNM_Neumann_boundary() {
       Pb[i].C2_old = Pb[i].C2;
     }
 
-    if (inter_n <= 10 && dt <= 1) {
+    if (inter_n <= 10 && dt <= 100) {
       dt = dt * 2;
     }
 
@@ -6764,9 +6768,7 @@ double PNMsolver::micro_free_mass_loss() {
   return (micro_mass_loss);
 }
 
-double PNMsolver::micro_ad_mass_loss()        // - outlet_pre * Pb[i].volume *
-                                              // (porosity - n_ad2 / Rho_ad) * 16 /
-                                              // (compre_2 * 8.314 * Temperature)
+double PNMsolver::micro_ad_mass_loss()        // - outlet_pre * Pb[i].volume *   // (porosity - n_ad2 / Rho_ad) * 16 /  // (compre_2 * 8.314 * Temperature)
 {
   double micro_ad_mass_loss = 0;
   for (int i = macro_n + m_inlet; i < pn - m_outlet; i++) {
