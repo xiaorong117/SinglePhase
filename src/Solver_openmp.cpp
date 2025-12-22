@@ -404,11 +404,12 @@ class PNMsolver        // 定义类
   double OM_LP_ad_loss_per_step();
   double OM_LP_free_loss_per_step();
 
-  void output(int n);                 // 输出VTK文件
-  void output(int n, bool m);         // REV 输出VTK 瞬态
-  void output(int n, int m);          // 渗透率计算输出vtk
-  void output(double);                // 十大攻关输出展示文件
-  void output(double, double);        // 单重孔网
+  void output(int n);                      // 输出VTK文件
+  void output(int n, int m, int l);        // 输出VTK文件
+  void output(int n, bool m);              // REV 输出VTK 瞬态
+  void output(int n, int m);               // 渗透率计算输出vtk
+  void output(double);                     // 十大攻关输出展示文件
+  void output(double, double);             // 单重孔网
   void mean_pore_size();
 
   ~PNMsolver()        // 析构函数，释放动态存储
@@ -4328,6 +4329,75 @@ void PNMsolver::output(int n, bool m) {
   outfile.close();
 }
 
+void PNMsolver::output(int n, int m, int l) {
+  ostringstream name;
+  name << "Permeability";
+  name << to_string(inlet_pre + refer_pressure);
+  name << ".vtk";
+  ofstream outfile(name.str().c_str());
+  outfile << "# vtk DataFile Version 2.0" << endl;
+  outfile << "output.vtk" << endl;
+  outfile << "ASCII " << endl;
+  outfile << "DATASET POLYDATA " << endl;
+  outfile << "POINTS " << pn << " float" << endl;
+  for (int i = 0; i < pn; i++) {
+    outfile << Pb[i].X << "\t" << Pb[i].Y << "\t" << Pb[i].Z << endl;
+  }
+  // 输出孔喉连接信息
+  outfile << "LINES" << "\t" << tn << "\t" << 3 * Pb[pn - 1].full_accum << endl;
+  for (int i = 0; i < Pb[pn - 1].full_accum; i++) {
+    outfile << 2 << "\t" << Tb[i].ID_1 << "\t" << Tb[i].ID_2 << endl;
+  }
+  // 输出孔体信息
+  outfile << "POINT_DATA " << "\t" << pn << endl;
+  outfile << "SCALARS size_pb double 1" << endl;
+  outfile << "LOOKUP_TABLE table1" << endl;
+  for (int i = 0; i < pn; i++) {
+    if (i < macro_n) {
+      outfile << Pb[i].Radiu * 2 << "\t";
+    } else {
+      outfile << Pb[i].Radiu << "\t";
+    }
+  }
+  outfile << endl;
+  // 输出编号信息
+  outfile << "SCALARS NUMBER double 1" << endl;
+  outfile << "LOOKUP_TABLE table2" << endl;
+  for (int i = 0; i < pn; i++) {
+    outfile << i << endl;
+  }
+  // 输出压力场信息
+  outfile << "SCALARS Pressure double 1" << endl;
+  outfile << "LOOKUP_TABLE table3" << endl;
+  for (int i = 0; i < pn; i++) {
+    outfile << Pb[i].pressure - outlet_pre << endl;
+  }
+
+  // 输出孔类型信息
+  outfile << "SCALARS pb_type double 1" << endl;
+  outfile << "LOOKUP_TABLE table4" << endl;
+  for (int i = 0; i < pn; i++) {
+    outfile << Pb[i].type << endl;
+  }
+
+  // 输出吼道信息
+  outfile << "CELL_DATA" << "\t" << Pb[pn - 1].full_accum << endl;
+  outfile << "SCALARS throat_EqRadius double 1" << endl;
+  outfile << "LOOKUP_TABLE table10" << endl;
+  for (int i = 0; i < Pb[pn - 1].full_accum; i++) {
+    outfile << Tb[i].Radiu << endl;
+  }
+
+  outfile << "SCALARS flux double 1" << endl;
+  outfile << "LOOKUP_TABLE table11" << endl;
+  for (int i = 0; i < Pb[pn - 1].full_accum; i++) {
+    double kkk = Tb[i].Conductivity * abs(Pb[Tb[i].ID_1].pressure - Pb[Tb[i].ID_2].pressure);
+    outfile << kkk << endl;
+  }
+
+  outfile.close();
+}
+
 void PNMsolver::output(int n, int m) {
   ofstream main_path_macro("main_path_macro.txt");
   ofstream main_path_micro("main_path_micro.txt");
@@ -7109,7 +7179,7 @@ void PNMsolver::AMGX_solver_apparent_permeability_REV() {
     outfile << (macro + micro_advec) * gas_vis * domain_length * voxel_size / (pow(domain_size_cubic * voxel_size, 2) * (inlet_pre - outlet_pre)) / 1e-15 << " mD\t"
             << (inlet_pre + refer_pressure) / 1e6 << " MPa" << endl;
     if (Flag_outputvtk) {
-      output(1, 1);
+      output(1, 1, 1);
     }
 
     refer_pressure += 1e6;

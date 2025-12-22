@@ -1593,7 +1593,7 @@ reverse_mode<double> PNMsolver::func_append_kong1(reverse_mode<double>& Pi, reve
       iCounter1++;
     }
   }
-  return RETURN - 0.00043 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.043 * 0.01 * 0.01 * 0.01 / 60;
   // 0.00043 for PE=0.1
   // 0.0043 for PE=1
   // 0.043 for PE=10
@@ -1628,7 +1628,7 @@ reverse_mode<double> PNMsolver::func_append_kong2(reverse_mode<double>& Pi, reve
     } else {
     }
   }
-  return RETURN - 0.000185 * 0.01 * 0.01 * 0.01 / 60;
+  return RETURN - 0.0185 * 0.01 * 0.01 * 0.01 / 60;
   // 0.000185 for PE=0.1
   // 0.00185 for PE=1
   // 0.0185 for PE=10
